@@ -502,7 +502,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.space ||
-        key == LogicalKeyboardKey.gameButtonA) {
+        key == LogicalKeyboardKey.gameButtonA ||
+        key == LogicalKeyboardKey.gameButtonSelect) {
       // Center button resumes/pauses directly WITHOUT popping up HUD/center controls
       _togglePlayPause(showHud: false);
       return KeyEventResult.handled;

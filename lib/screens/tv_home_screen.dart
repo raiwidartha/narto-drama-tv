@@ -469,6 +469,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         case 1:
           if (_firstProviderFocusNode.canRequestFocus) {
             _firstProviderFocusNode.requestFocus();
+          } else if (_firstProviderDramaFocusNode.canRequestFocus) {
+            _firstProviderDramaFocusNode.requestFocus();
           }
           break;
         case 2:
@@ -482,7 +484,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
           break;
         case 4:
-          _openTvSearchDialog();
+          if (_searchInputFocusNode.canRequestFocus) {
+            _searchInputFocusNode.requestFocus();
+          }
           break;
         case 5:
           if (_settingsFirstFocusNode.canRequestFocus) {
@@ -605,7 +609,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   Future<void> _handleBackPress() async {
     final now = DateTime.now();
-    if (now.difference(_lastBackPressTime) < const Duration(milliseconds: 600)) {
+    if (now.difference(_lastBackPressTime) < const Duration(milliseconds: 500)) {
       return;
     }
     _lastBackPressTime = now;
@@ -615,14 +619,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     try {
       final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
       if (!isAnyTabFocused) {
-        // Special case: if on Provider tab and focus is inside provider drama grid, move focus up to provider chips first
-        if (_selectedTabIndex == 1 && !_firstProviderFocusNode.hasFocus) {
-          if (_firstProviderFocusNode.canRequestFocus) {
-            _firstProviderFocusNode.requestFocus();
-            return;
-          }
-        }
-
         // Return focus to the currently active tab in navbar
         if (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length) {
           _tabFocusNodes[_selectedTabIndex].requestFocus();
@@ -632,7 +628,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         return;
       }
 
-      // If already on the navbar, show exit confirmation dialog
+      // If already on the navbar, but NOT on Tab 0 (Beranda):
+      // Return to Tab 0 (Beranda)
+      if (_selectedTabIndex != 0) {
+        _onTabChanged(0);
+        return;
+      }
+
+      // If already on Tab 0 navbar, show exit confirmation dialog
       final shouldExit = await _showExitConfirmationDialog();
       if (shouldExit == true) {
         SystemNavigator.pop();
@@ -752,12 +755,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         if (event is KeyDownEvent) {
                           if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                             if (index < _tabFocusNodes.length - 1) {
-                              _tabFocusNodes[index + 1].requestFocus();
+                              _onTabChanged(index + 1);
                               return KeyEventResult.handled;
                             }
                           } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                             if (index > 0) {
-                              _tabFocusNodes[index - 1].requestFocus();
+                              _onTabChanged(index - 1);
                               return KeyEventResult.handled;
                             }
                           } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -867,17 +870,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           const SizedBox(height: 14),
           Expanded(
             child: _isLoadingHome && _homeDramas.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Color(0xFFFF2D55)),
-                        SizedBox(height: 16),
-                        Text(
-                          'Memuat drama beranda...',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
+                ? Center(
+                    child: TvFocusable(
+                      focusNode: _firstHomeFocusNode,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          _tabFocusNodes[0].requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xFFFF2D55)),
+                          SizedBox(height: 16),
+                          Text(
+                            'Memuat drama beranda...',
+                            style: TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : _homeDramas.isEmpty
@@ -1036,8 +1049,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           if (_firstProviderDramaFocusNode.canRequestFocus) {
                             _firstProviderDramaFocusNode.requestFocus();
-                            return KeyEventResult.handled;
                           }
+                          return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           _tabFocusNodes[1].requestFocus();
                           return KeyEventResult.handled;
@@ -1109,17 +1122,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           // Provider Drama Grid Content
           Expanded(
             child: _isLoadingProviderDramas && _providerDramas.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Color(0xFFFF2D55)),
-                        SizedBox(height: 16),
-                        Text(
-                          'Memuat drama provider...',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
+                ? Center(
+                    child: TvFocusable(
+                      focusNode: _firstProviderDramaFocusNode,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          _firstProviderFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xFFFF2D55)),
+                          SizedBox(height: 16),
+                          Text(
+                            'Memuat drama provider...',
+                            style: TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : _providerDramas.isEmpty

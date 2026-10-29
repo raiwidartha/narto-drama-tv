@@ -112,7 +112,8 @@ class _TvFocusableState extends State<TvFocusable> {
               event.logicalKey == LogicalKeyboardKey.enter ||
               event.logicalKey == LogicalKeyboardKey.numpadEnter ||
               event.logicalKey == LogicalKeyboardKey.space ||
-              event.logicalKey == LogicalKeyboardKey.gameButtonA) {
+              event.logicalKey == LogicalKeyboardKey.gameButtonA ||
+              event.logicalKey == LogicalKeyboardKey.gameButtonSelect) {
             _triggerPress();
             return KeyEventResult.handled;
           }
