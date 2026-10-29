@@ -57,6 +57,76 @@ class DramaItem {
     return cleanTitle(title).toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
   }
 
+  static const List<String> knownProviders = [
+    'anyreel', 'bibishort', 'bilitv', 'candyjar', 'cubetv', 'dotdrama', 'dotdrama2', 'dramabite',
+    'dramabox', 'dramanova', 'dramashorts', 'dramatv', 'gorogoro', 'dramawave', 'dreameshort',
+    'flareflow', 'flextv', 'flickreels', 'freedrama', 'freereels', 'fundrama', 'goodshort',
+    'happyshort', 'idrama', 'joyreels', 'kalostv', 'melolo', 'microdrama', 'minishorts',
+    'minutedrama', 'moboreels', 'moviebox', 'mydrama', 'myrelle', 'netshort', 'ohmytv',
+    'pinedrama', 'playlet', 'rapidtv', 'rapidtv2', 'raptdrama', 'reelala', 'reelbuzz',
+    'reelife', 'reelshort', 'sarostv', 'serealplus', 'shortical', 'shortmax', 'sixthshort',
+    'stardusttv', 'starshort', 'storeel', 'storyreel', 'topdrama', 'velolo', 'vibeshort',
+    'vigloo', 'vyntage'
+  ];
+
+  static String detectProvider({
+    String? explicitProvider,
+    String? providerKey,
+    String? sourceType,
+    String? watchUrl,
+    List<String>? tags,
+    String? defaultProvider,
+  }) {
+    if (explicitProvider != null && explicitProvider.trim().isNotEmpty) {
+      final p = explicitProvider.trim().toLowerCase();
+      if (p != 'local' && p != 'narto' && p != 'all') {
+        return explicitProvider.trim();
+      }
+    }
+    if (providerKey != null && providerKey.trim().isNotEmpty) {
+      final p = providerKey.trim().toLowerCase();
+      if (p != 'local' && p != 'narto' && p != 'all') {
+        return providerKey.trim();
+      }
+    }
+
+    if (tags != null && tags.isNotEmpty) {
+      for (final t in tags) {
+        final cleanTag = t.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        for (final prov in knownProviders) {
+          if (cleanTag.contains(prov)) {
+            return prov;
+          }
+        }
+      }
+    }
+
+    if (sourceType != null && sourceType.trim().isNotEmpty) {
+      final st = sourceType.trim().toLowerCase();
+      if (st != 'local' && st != 'narto' && st != 'all') {
+        return sourceType.trim();
+      }
+    }
+
+    if (watchUrl != null && watchUrl.isNotEmpty) {
+      final cleanUrl = watchUrl.toLowerCase();
+      for (final prov in knownProviders) {
+        if (cleanUrl.contains('provider=$prov') || cleanUrl.contains('/$prov/')) {
+          return prov;
+        }
+      }
+    }
+
+    if (defaultProvider != null && defaultProvider.trim().isNotEmpty) {
+      final dp = defaultProvider.trim().toLowerCase();
+      if (dp != 'all' && dp != 'narto') {
+        return defaultProvider.trim();
+      }
+    }
+
+    return 'Narto';
+  }
+
   factory DramaItem.fromJson(Map<String, dynamic> json, {String? defaultProvider}) {
     final idVal = json['id']?.toString() ?? json['book_id']?.toString() ?? '';
     final rawTitle = json['title']?.toString() ?? '';
@@ -91,13 +161,14 @@ class DramaItem {
         json['intro']?.toString() ??
         json['summary']?.toString();
 
-    final rawProv = defaultProvider ??
-        json['provider']?.toString() ??
-        json['provider_key']?.toString() ??
-        (json['source_type'] != null && json['source_type'].toString().isNotEmpty
-            ? (json['source_type'] == 'local' ? 'Narto' : json['source_type'].toString())
-            : null) ??
-        'Narto';
+    final detectedProv = detectProvider(
+      explicitProvider: json['provider']?.toString(),
+      providerKey: json['provider_key']?.toString(),
+      sourceType: json['source_type']?.toString(),
+      watchUrl: urlVal,
+      tags: tagsList,
+      defaultProvider: defaultProvider,
+    );
 
     return DramaItem(
       id: idVal,
@@ -107,7 +178,7 @@ class DramaItem {
       episodeCount: epCount,
       description: descVal,
       tags: tagsList,
-      providerKey: rawProv,
+      providerKey: detectedProv,
     );
   }
 }

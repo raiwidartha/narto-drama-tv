@@ -55,8 +55,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialEpisodeIndex;
+    _seekBarFocusNode.addListener(_onFocusChanged);
+    _playPauseFocusNode.addListener(_onFocusChanged);
     _initController();
     _savePlaybackHistory();
+  }
+
+  void _onFocusChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _savePlaybackHistory() {
@@ -442,7 +450,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           return KeyEventResult.handled;
         }
       } else {
-        // If center controls has focus and user presses arrowDown, transfer focus to seek bar
+        // If center controls has focus and user presses arrowDown, transfer focus to seek bar (Laju Pemutaran)
         if (key == LogicalKeyboardKey.arrowDown) {
           _seekBarFocusNode.requestFocus();
           return KeyEventResult.handled;
@@ -481,11 +489,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      // Down while watching video opens Episode Drawer directly (AnimeIn TV parity)
-      setState(() {
-        _showControls = false;
-        _showEpisodeDrawer = true;
-      });
+      // Down while playing video opens HUD and directly focuses Laju Pemutaran
+      _showHudTemporarily(persistent: false);
+      _seekBarFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
 
@@ -802,6 +808,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   @override
   void dispose() {
+    _seekBarFocusNode.removeListener(_onFocusChanged);
+    _playPauseFocusNode.removeListener(_onFocusChanged);
     _hideControlsTimer?.cancel();
     _seekIndicatorTimer?.cancel();
     _activeSubtitleNotifier.dispose();
@@ -1163,6 +1171,29 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         child: TvFocusable(
                           focusNode: _seekBarFocusNode,
                           onPressed: _togglePlayPause,
+                          onKeyEvent: (node, event) {
+                            if (event is KeyDownEvent) {
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                setState(() {
+                                  _showControls = false;
+                                  _showEpisodeDrawer = true;
+                                });
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playPauseFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _seekBy(-10);
+                                _showHudTemporarily(persistent: false);
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _seekBy(10);
+                                _showHudTemporarily(persistent: false);
+                                return KeyEventResult.handled;
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
                           borderRadius: BorderRadius.circular(10),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           backgroundColor: Colors.white.withValues(alpha: 0.05),

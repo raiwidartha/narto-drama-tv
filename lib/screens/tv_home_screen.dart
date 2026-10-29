@@ -1432,7 +1432,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     const SizedBox(height: 16),
                     const Text('URL Endpoint Upstream:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
-                    Focus(
+                    TvFocusable(
                       focusNode: hostFieldFocus,
                       onKeyEvent: (node, event) {
                         if (event is KeyDownEvent) {
@@ -1446,18 +1446,66 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         }
                         return KeyEventResult.ignored;
                       },
-                      child: TextField(
-                        controller: textController,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          hintText: 'https://...',
-                          hintStyle: const TextStyle(color: Colors.white38),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5)),
-                        ),
+                      onPressed: () async {
+                        final editController = TextEditingController(text: textController.text);
+                        final customUrl = await showDialog<String>(
+                          context: dialogCtx,
+                          builder: (editCtx) {
+                            return AlertDialog(
+                              backgroundColor: const Color(0xFF0F172A),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              title: const Text('Ketik URL Endpoint Host', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                              content: TextField(
+                                controller: editController,
+                                autofocus: true,
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(
+                                  hintText: 'https://...',
+                                  hintStyle: TextStyle(color: Colors.white38),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(editCtx).pop(),
+                                  child: const Text('Batal', style: TextStyle(color: Colors.white54)),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.of(editCtx).pop(editController.text.trim()),
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2D55)),
+                                  child: const Text('Gunakan URL Ini', style: TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        if (customUrl != null && customUrl.isNotEmpty) {
+                          textController.text = customUrl;
+                          setDialogState(() {
+                            testResult = '';
+                            testSuccess = null;
+                          });
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      backgroundColor: const Color(0xFF0F172A),
+                      focusedBackgroundColor: const Color(0xFF1E293B),
+                      focusBorderColor: const Color(0xFF38BDF8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              textController.text.isNotEmpty ? textController.text : 'https://...',
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.edit_rounded, color: Color(0xFF38BDF8), size: 16),
+                          const SizedBox(width: 4),
+                          const Text('Ubah', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
