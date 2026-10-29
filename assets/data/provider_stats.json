@@ -1,0 +1,703 @@
+[
+  {
+    "slug": "dramabox",
+    "label": "DramaBox",
+    "count": 19,
+    "tabs": [
+      "Untukmu",
+      "Terbaru",
+      "Peringkat"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "shortmax",
+    "label": "ShortMax",
+    "count": 114,
+    "tabs": [
+      "Rekomendasi",
+      "Baru \u2728",
+      "HOT",
+      "Baper Cinta",
+      "Peringkat",
+      "Gudang Drama\ud83d\udcfa"
+    ],
+    "sections": 6,
+    "ok": true
+  },
+  {
+    "slug": "reelshort",
+    "label": "ReelShort",
+    "count": 192,
+    "tabs": [
+      "Populer",
+      "Terbaru",
+      "Ranking",
+      "Anime",
+      "Asia",
+      "Kategori",
+      "Khusus Pria",
+      "Khusus Wanita"
+    ],
+    "sections": 8,
+    "ok": true
+  },
+  {
+    "slug": "netshort",
+    "label": "NetShort",
+    "count": 43,
+    "tabs": [
+      "Home",
+      "List"
+    ],
+    "sections": 2,
+    "ok": true
+  },
+  {
+    "slug": "moboreels",
+    "label": "MoboReels",
+    "count": 120,
+    "tabs": [
+      "Beranda",
+      "Baru",
+      "Sulih suara",
+      "Komik",
+      "Animasi",
+      "Orisinal",
+      "Drama Asia"
+    ],
+    "sections": 7,
+    "ok": true
+  },
+  {
+    "slug": "kalostv",
+    "label": "KalosTV",
+    "count": 60,
+    "tabs": [
+      "For You",
+      "Popular",
+      "New"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "bibishort",
+    "label": "BibiShort",
+    "count": 15,
+    "tabs": [
+      "For You",
+      "Feed"
+    ],
+    "sections": 2,
+    "ok": true
+  },
+  {
+    "slug": "flextv",
+    "label": "FlexTV",
+    "count": 76,
+    "tabs": [
+      "Fokus",
+      "Baru",
+      "Pria",
+      "Wanita"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "serealplus",
+    "label": "Sereal+",
+    "count": 22,
+    "tabs": [
+      "Home",
+      "Latest"
+    ],
+    "sections": 2,
+    "ok": true
+  },
+  {
+    "slug": "anyreel",
+    "label": "AnyReel",
+    "count": 0,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "goodshort",
+    "label": "GoodShort",
+    "count": 116,
+    "tabs": [
+      "Tren\ud83d\udd25",
+      "Terbaru",
+      "Ranking",
+      "Dubing",
+      "Anime"
+    ],
+    "sections": 5,
+    "ok": true
+  },
+  {
+    "slug": "candyjar",
+    "label": "CandyJar",
+    "count": 210,
+    "tabs": [
+      "New Releases",
+      "Trending",
+      "CandyJar Classics \ud83c\udf6c",
+      "Your Fav Vertical Men \ud83e\udd24",
+      "Young Adult \ud83d\udcd2",
+      "Supernatural Love \u2728",
+      "Sports Romance \ud83c\udfc8",
+      "Forbidden Romance \u2764\ufe0f\u200d\ud83d\udd25",
+      "Diverse Leads \ud83c\udf0e",
+      "Enemies-to-Lovers \ud83d\udd25",
+      "Hidden Identity \ud83c\udfad",
+      "Contract Marriage \u2764\ufe0f\u200d\ud83e\ude79",
+      "Mafia, Gangs, & Trouble \ud83d\udd2a",
+      "All Series \u267e\ufe0f"
+    ],
+    "sections": 14,
+    "ok": true
+  },
+  {
+    "slug": "cubetv",
+    "label": "CubeTV",
+    "count": 54,
+    "tabs": [
+      "Pilihan",
+      "Baru",
+      "Peringkat",
+      "Kategori"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "dotdrama",
+    "label": "DotDrama",
+    "count": 18,
+    "tabs": [
+      "List"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "dotdrama2",
+    "label": "DotDrama II",
+    "count": 18,
+    "tabs": [
+      "List"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "dramanova",
+    "label": "DramaNova",
+    "count": 48,
+    "tabs": [
+      "Home",
+      "Hot"
+    ],
+    "sections": 2,
+    "ok": true
+  },
+  {
+    "slug": "dramatv",
+    "label": "DramaTV",
+    "count": 18,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "dramawave",
+    "label": "DramaWave",
+    "count": 102,
+    "tabs": [
+      "POPULER",
+      "BARU",
+      "EKSKLUSIF",
+      "\ud83c\udf81TEMUKAN",
+      "DUBBING",
+      "VIP",
+      "WANITA",
+      "PRIA"
+    ],
+    "sections": 8,
+    "ok": true
+  },
+  {
+    "slug": "dramashorts",
+    "label": "DramaShorts",
+    "count": 58,
+    "tabs": [
+      "Home",
+      "Trending",
+      "Popular"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "flareflow",
+    "label": "FlareFlow",
+    "count": 20,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "dreameshort",
+    "label": "DreameShort",
+    "count": 24,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "dramabite",
+    "label": "Dramabite",
+    "count": 87,
+    "tabs": [
+      "For You",
+      "Popular",
+      "New",
+      "Free"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "flickreels",
+    "label": "FlickReels",
+    "count": 116,
+    "tabs": [
+      "home",
+      "Baru",
+      "Peringkat",
+      "Kategori",
+      "Nyonya Perkasa\ud83e\udd8b",
+      "Romance",
+      "Cerita Pria"
+    ],
+    "sections": 7,
+    "ok": true
+  },
+  {
+    "slug": "freedrama",
+    "label": "FreeDrama",
+    "count": 14,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "freereels",
+    "label": "FreeReels",
+    "count": 30,
+    "tabs": [
+      "For You",
+      "Popular",
+      "New"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "fundrama",
+    "label": "Fun Drama",
+    "count": 18,
+    "tabs": [
+      "List"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "gorogoro",
+    "label": "GoroGoro",
+    "count": 18,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "happyshort",
+    "label": "HappyShort",
+    "count": 93,
+    "tabs": [
+      "\ud83c\udf1f SEGAR & PANAS \ud83c\udf36",
+      "\ud83c\udf08 Rilis Baru \u2728",
+      "WAJIB DITONTON \ud83d\udc40",
+      "\ud83d\udd25 Peringkat Viral \ud83d\udd25",
+      "\ud83c\udd93 Gratis ditonton \u2728",
+      "\ud83c\udf89 Serial Trending \ud83c\udf1f",
+      "\ud83d\udc96 Kamu Mungkin Suka"
+    ],
+    "sections": 7,
+    "ok": true
+  },
+  {
+    "slug": "joyreels",
+    "label": "JoyReels",
+    "count": 92,
+    "tabs": [
+      "PANAS",
+      "\u2728Baru\u2728",
+      "Peringkat",
+      "\ud83c\udfacFilm\ud83c\udfac",
+      "ASIA"
+    ],
+    "sections": 5,
+    "ok": true
+  },
+  {
+    "slug": "melolo",
+    "label": "Melolo",
+    "count": 256,
+    "tabs": [
+      "Populer",
+      "CEO",
+      "Harem",
+      "Sistem",
+      "Fantasi Pria",
+      "Romansa Fantasi",
+      "Cinta Satu Malam",
+      "Reinkarnasi",
+      "Perselingkuhan",
+      "Pertumbuhan Wanita",
+      "Drama Sejarah"
+    ],
+    "sections": 11,
+    "ok": true
+  },
+  {
+    "slug": "microdrama",
+    "label": "MicroDrama",
+    "count": 20,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "minishorts",
+    "label": "MiniShorts",
+    "count": 15,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "myrelle",
+    "label": "MyRelle",
+    "count": 0,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "minutedrama",
+    "label": "MinuteDrama",
+    "count": 162,
+    "tabs": [
+      "Home",
+      "Populer",
+      "Drama Inggris",
+      "Balas Dendam",
+      "Cinta",
+      "Misteri",
+      "Miliarder",
+      "Karma",
+      "Pengembangan Diri"
+    ],
+    "sections": 9,
+    "ok": true
+  },
+  {
+    "slug": "mydrama",
+    "label": "My Drama",
+    "count": 47,
+    "tabs": [
+      "Popular",
+      "Latest",
+      "Top Rated"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "ohmytv",
+    "label": "OhMyTV",
+    "count": 24,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "pinedrama",
+    "label": "PineDrama",
+    "count": 64,
+    "tabs": [
+      "Home",
+      "Trending",
+      "Category"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "playlet",
+    "label": "Playlet",
+    "count": 40,
+    "tabs": [
+      "Home",
+      "New",
+      "For You"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "rapidtv2",
+    "label": "RapidTV II",
+    "count": 18,
+    "tabs": [
+      "List"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "rapidtv",
+    "label": "RapidTV",
+    "count": 18,
+    "tabs": [
+      "List"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "raptdrama",
+    "label": "RaptDrama",
+    "count": 20,
+    "tabs": [
+      "For You",
+      "Recommended"
+    ],
+    "sections": 2,
+    "ok": true
+  },
+  {
+    "slug": "reelala",
+    "label": "Reelala",
+    "count": 24,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "sarostv",
+    "label": "SAROS TV",
+    "count": 39,
+    "tabs": [
+      "Home",
+      "Serial baru datang",
+      "Sedang tren"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "reelbuzz",
+    "label": "ReelBuzz",
+    "count": 39,
+    "tabs": [
+      "Tren populer",
+      "Terbaru",
+      "Paling Dicari",
+      "Daftar Terlaris"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "reelife",
+    "label": "Reelife",
+    "count": 98,
+    "tabs": [
+      "Temukan",
+      "Peringkat",
+      "Anime",
+      "Wanita",
+      "Pria",
+      "CEO",
+      "Balas Dendam"
+    ],
+    "sections": 7,
+    "ok": true
+  },
+  {
+    "slug": "shortical",
+    "label": "Shortical",
+    "count": 61,
+    "tabs": [
+      "Trending",
+      "For You",
+      "Ongoing",
+      "Recommended",
+      "Charts"
+    ],
+    "sections": 5,
+    "ok": true
+  },
+  {
+    "slug": "sixthshort",
+    "label": "SixthShort",
+    "count": 20,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "starshort",
+    "label": "StarShort",
+    "count": 113,
+    "tabs": [
+      "Drama Terbaik\ud83c\udfc6",
+      "Baru Hari Ini\ud83c\udfa5",
+      "Sedang Tren\ud83d\udd25",
+      "Dubbing Favoritmu\ud83c\udfa7",
+      "Siapa Dia Sebenarnya\uff1f\ud83d\ude2e",
+      "Balas Dendam\ud83d\udca5",
+      "Cinta Gila\ud83d\udc94",
+      "Rekomendasi untuk Kamu\ud83d\udc96",
+      "Drama Gratis"
+    ],
+    "sections": 9,
+    "ok": true
+  },
+  {
+    "slug": "topdrama",
+    "label": "TopDrama",
+    "count": 18,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "velolo",
+    "label": "Velolo",
+    "count": 52,
+    "tabs": [
+      "Home",
+      "Hot",
+      "New"
+    ],
+    "sections": 3,
+    "ok": true
+  },
+  {
+    "slug": "stardusttv",
+    "label": "StardustTV",
+    "count": 158,
+    "tabs": [
+      "Home",
+      "Urban Fantasi",
+      "Cinta Modern",
+      "Etika Keluarga",
+      "Fantasi",
+      "Romansa Kuno",
+      "Politik Kuno",
+      "Bayi/Ayah",
+      "Romansa Era",
+      "Fantasi Romansa",
+      "Misteri/Thriller",
+      "Sci-Fi",
+      "Lainnya"
+    ],
+    "sections": 13,
+    "ok": true
+  },
+  {
+    "slug": "storeel",
+    "label": "Storeel",
+    "count": 96,
+    "tabs": [
+      "Popular",
+      "New",
+      "Boys' Love",
+      "Originals"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "vigloo",
+    "label": "Vigloo",
+    "count": 96,
+    "tabs": [
+      "Populer",
+      "Baru",
+      "Rekomendasi",
+      "Asia"
+    ],
+    "sections": 4,
+    "ok": true
+  },
+  {
+    "slug": "vyntage",
+    "label": "Vyntage",
+    "count": 24,
+    "tabs": [
+      "Home"
+    ],
+    "sections": 1,
+    "ok": true
+  },
+  {
+    "slug": "idrama",
+    "label": "iDrama",
+    "count": 112,
+    "tabs": [
+      "Populer",
+      "Sedang Tren",
+      "Hits Terbaru",
+      "Terbaru",
+      "Sulih Suara"
+    ],
+    "sections": 5,
+    "ok": true
+  }
+]
