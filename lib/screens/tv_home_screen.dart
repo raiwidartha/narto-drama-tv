@@ -526,34 +526,73 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     return result ?? false;
   }
 
+  bool _isHandlingBack = false;
+
+  Future<void> _handleBackPress() async {
+    if (_isHandlingBack) return;
+    _isHandlingBack = true;
+    try {
+      final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
+      if (!isAnyTabFocused) {
+        if (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length) {
+          _tabFocusNodes[_selectedTabIndex].requestFocus();
+        } else {
+          _tabFocusNodes[0].requestFocus();
+        }
+        return;
+      }
+
+      if (_selectedTabIndex != 0) {
+        _onTabChanged(0);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _tabFocusNodes[0].canRequestFocus) {
+            _tabFocusNodes[0].requestFocus();
+          }
+        });
+        return;
+      }
+
+      final shouldExit = await _showExitConfirmationDialog();
+      if (shouldExit == true) {
+        SystemNavigator.pop();
+      }
+    } finally {
+      _isHandlingBack = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (_selectedTabIndex != 0) {
-          _onTabChanged(0);
-          return;
-        }
-        final shouldExit = await _showExitConfirmationDialog();
-        if (shouldExit == true) {
-          SystemNavigator.pop();
-        }
+        await _handleBackPress();
       },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F172A), // Slate 900
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Top Navigation & Header Bar
-              _buildTopBar(),
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.goBack ||
+                  event.logicalKey == LogicalKeyboardKey.escape)) {
+            _handleBackPress();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F172A), // Slate 900
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Top Navigation & Header Bar
+                _buildTopBar(),
 
-              // Main View
-              Expanded(
-                child: _buildCurrentTabContent(),
-              ),
-            ],
+                // Main View
+                Expanded(
+                  child: _buildCurrentTabContent(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1415,17 +1454,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           return KeyEventResult.handled;
                         } else if (_firstSearchResultFocusNode.canRequestFocus) {
                           _firstSearchResultFocusNode.requestFocus();
-                          return KeyEventResult.handled;
-                        }
-                      } else if (event.logicalKey == LogicalKeyboardKey.escape ||
-                          event.logicalKey == LogicalKeyboardKey.backspace ||
-                          event.logicalKey == LogicalKeyboardKey.goBack) {
-                        if (queryText.isNotEmpty) {
-                          setState(() {
-                            _searchController.clear();
-                            _searchResults = [];
-                            _searchError = '';
-                          });
                           return KeyEventResult.handled;
                         }
                       }
