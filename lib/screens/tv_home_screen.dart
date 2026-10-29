@@ -89,6 +89,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           page: _homePage,
         );
         final sections = res['sections'] as List<ProviderSection>? ?? [];
+        final apiProviders = res['providers'] as List<ProviderInfo>?;
         final List<DramaItem> items = [];
         for (final sec in sections) {
           items.addAll(sec.items);
@@ -105,6 +106,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
         if (mounted) {
           setState(() {
+            if (apiProviders != null && apiProviders.isNotEmpty) {
+              _providers = apiProviders;
+            }
             _homeDramas = reset ? uniqueItems : [..._homeDramas, ...uniqueItems];
             _hasMoreHome = uniqueItems.length >= 10;
             _homePage++;
