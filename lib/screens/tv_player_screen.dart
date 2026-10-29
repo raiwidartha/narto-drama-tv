@@ -60,6 +60,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   Timer? _backHoldTimer;
   Timer? _backHoldProgressTimer;
   DateTime? _backHoldStartTime;
+  int _backRepeatCount = 0;
   bool _isHoldingBack = false;
   double _holdBackProgress = 0.0;
   bool _showHoldHint = false;
@@ -558,9 +559,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return;
     }
 
-    // Clean playback: require holding Back for 550ms
+    // Clean playback: require holding Back for 500ms
     if (_backHoldStartTime == null) {
       _backHoldStartTime = DateTime.now();
+      _backRepeatCount = 0;
       setState(() {
         _isHoldingBack = true;
         _holdBackProgress = 0.0;
@@ -575,27 +577,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           return;
         }
         final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
-        final progress = (elapsed / 550.0).clamp(0.0, 1.0);
+        final progress = (elapsed / 500.0).clamp(0.0, 1.0);
         setState(() {
           _holdBackProgress = progress;
         });
-        if (elapsed >= 550) {
+        if (elapsed >= 500) {
           t.cancel();
           _triggerHoldExit();
         }
       });
 
       _backHoldTimer?.cancel();
-      _backHoldTimer = Timer(const Duration(milliseconds: 550), () {
+      _backHoldTimer = Timer(const Duration(milliseconds: 500), () {
         _triggerHoldExit();
       });
     }
   }
 
   void _onBackKeyRepeat() {
-    if (_isHoldingBack && _backHoldStartTime != null) {
-      final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
-      if (elapsed >= 500) {
+    if (_isHoldingBack) {
+      _backRepeatCount++;
+      final elapsed = _backHoldStartTime != null
+          ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
+          : 0;
+      if (_backRepeatCount >= 1 || elapsed >= 300) {
         _triggerHoldExit();
       }
     }
@@ -606,8 +611,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       final elapsed = _backHoldStartTime != null
           ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
           : 0;
+      final wasHeld = _backRepeatCount >= 1 || elapsed >= 450;
       _cancelBackHold();
-      if (elapsed < 500 && !_isConfirmingExit) {
+      if (!wasHeld && !_isConfirmingExit) {
         _showHoldBackHint();
       }
     }
@@ -619,6 +625,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _backHoldProgressTimer?.cancel();
     _backHoldProgressTimer = null;
     _backHoldStartTime = null;
+    _backRepeatCount = 0;
     if (_isHoldingBack) {
       setState(() {
         _isHoldingBack = false;
