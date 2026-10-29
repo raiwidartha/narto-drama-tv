@@ -51,6 +51,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   // Dedicated remote entry focus nodes
   final FocusNode _firstHomeFocusNode = FocusNode();
+  final FocusNode _firstHomeDramaFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstProviderDramaFocusNode = FocusNode();
   final FocusNode _firstHistoryFocusNode = FocusNode();
@@ -463,11 +464,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (_selectedTabIndex != tabIndex) {
       _onTabChanged(tabIndex);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Attempt focus immediately and ensure in postFrameCallback
+    void requestTargetFocus() {
       if (!mounted) return;
       switch (tabIndex) {
         case 0:
-          if (_firstHomeFocusNode.canRequestFocus) {
+          if (_homeDramas.isNotEmpty && _firstHomeDramaFocusNode.canRequestFocus) {
+            _firstHomeDramaFocusNode.requestFocus();
+          } else if (_firstHomeFocusNode.canRequestFocus) {
             _firstHomeFocusNode.requestFocus();
           }
           break;
@@ -499,6 +503,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
           break;
       }
+    }
+
+    requestTargetFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      requestTargetFocus();
     });
   }
 
@@ -547,6 +556,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       node.dispose();
     }
     _firstHomeFocusNode.dispose();
+    _firstHomeDramaFocusNode.dispose();
     _firstProviderFocusNode.dispose();
     _firstProviderDramaFocusNode.dispose();
     _firstHistoryFocusNode.dispose();
@@ -967,7 +977,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           final drama = _homeDramas[index];
                           return TvDramaCard(
                             drama: drama,
-                            focusNode: index == 0 ? _firstHomeFocusNode : null,
+                            focusNode: index == 0 ? _firstHomeDramaFocusNode : null,
                             onKeyEvent: index < 6
                                 ? (node, event) {
                                     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
