@@ -42,6 +42,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   String _searchError = '';
   final List<FocusNode> _tabFocusNodes = List.generate(6, (_) => FocusNode());
 
+  // Dedicated remote entry focus nodes
+  final FocusNode _firstHomeFocusNode = FocusNode();
+  final FocusNode _firstProviderFocusNode = FocusNode();
+  final FocusNode _firstHistoryFocusNode = FocusNode();
+  final FocusNode _firstBookmarkFocusNode = FocusNode();
+  final FocusNode _searchInputFocusNode = FocusNode();
+  final FocusNode _searchClearFocusNode = FocusNode();
+  final FocusNode _searchSubmitBtnFocusNode = FocusNode();
+  final FocusNode _settingsFirstFocusNode = FocusNode();
+  final ScrollController _settingsScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -267,6 +278,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     for (final node in _tabFocusNodes) {
       node.dispose();
     }
+    _firstHomeFocusNode.dispose();
+    _firstProviderFocusNode.dispose();
+    _firstHistoryFocusNode.dispose();
+    _firstBookmarkFocusNode.dispose();
+    _searchInputFocusNode.dispose();
+    _searchClearFocusNode.dispose();
+    _searchSubmitBtnFocusNode.dispose();
+    _settingsFirstFocusNode.dispose();
+    _settingsScrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -424,7 +444,47 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     child: TvFocusable(
                       focusNode: index < _tabFocusNodes.length ? _tabFocusNodes[index] : null,
                       autofocus: index == 0,
-                      onPressed: () => _onTabChanged(index),
+                      onPressed: () {
+                        if (_selectedTabIndex == index) {
+                          if (index == 4) {
+                            _searchInputFocusNode.requestFocus();
+                            _openTvSearchDialog();
+                          } else if (index == 5) {
+                            _settingsFirstFocusNode.requestFocus();
+                          }
+                        } else {
+                          _onTabChanged(index);
+                        }
+                      },
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          if (index == 0) {
+                            _firstHomeFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (index == 1) {
+                            _firstProviderFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (index == 2) {
+                            _firstHistoryFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (index == 3) {
+                            _firstBookmarkFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (index == 4) {
+                            _searchInputFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (index == 5) {
+                            _settingsFirstFocusNode.requestFocus();
+                            _settingsScrollController.animateTo(
+                              0.0,
+                              duration: const Duration(milliseconds: 150),
+                              curve: Curves.easeOut,
+                            );
+                            return KeyEventResult.handled;
+                          }
+                        }
+                        return KeyEventResult.ignored;
+                      },
                       borderRadius: BorderRadius.circular(8),
                       backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
                       focusedBackgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF334155),
@@ -571,6 +631,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         final drama = _homeDramas[index];
                         return TvDramaCard(
                           drama: drama,
+                          focusNode: index == 0 ? _firstHomeFocusNode : null,
                           onTap: () => _openDetail(drama),
                         );
                       },
@@ -680,6 +741,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 final isCurrent = _activeProvider == p.key;
 
                 return TvFocusable(
+                  focusNode: index == 0 ? _firstProviderFocusNode : null,
                   onPressed: () => _selectProvider(p.key),
                   borderRadius: BorderRadius.circular(8),
                   backgroundColor: isCurrent ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
@@ -816,6 +878,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       );
                       return TvDramaCard(
                         drama: drama,
+                        focusNode: index == 0 ? _firstHistoryFocusNode : null,
                         onTap: () => _openDetail(drama),
                       );
                     },
@@ -880,6 +943,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       );
                       return TvDramaCard(
                         drama: drama,
+                        focusNode: index == 0 ? _firstBookmarkFocusNode : null,
                         onTap: () => _openDetail(drama),
                       );
                     },
@@ -894,6 +958,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   void _openTvSearchDialog() {
     final dialogController = TextEditingController(text: _searchController.text);
     final focusNode = FocusNode();
+    final cancelBtnFocus = FocusNode();
+    final submitBtnFocus = FocusNode();
 
     showDialog(
       context: context,
@@ -928,22 +994,31 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
                   ),
-                  child: TextField(
-                    controller: dialogController,
-                    focusNode: focusNode,
-                    autofocus: true,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                    decoration: const InputDecoration(
-                      hintText: 'Masukkan judul drama...',
-                      hintStyle: TextStyle(color: Colors.white38, fontSize: 14),
-                      border: InputBorder.none,
-                    ),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (val) {
-                      Navigator.of(ctx).pop();
-                      _searchController.text = val;
-                      _performSearch(val);
+                  child: Focus(
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                        submitBtnFocus.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
                     },
+                    child: TextField(
+                      controller: dialogController,
+                      focusNode: focusNode,
+                      autofocus: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      decoration: const InputDecoration(
+                        hintText: 'Masukkan judul drama...',
+                        hintStyle: TextStyle(color: Colors.white38, fontSize: 14),
+                        border: InputBorder.none,
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (val) {
+                        Navigator.of(ctx).pop();
+                        _searchController.text = val;
+                        _performSearch(val);
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -956,6 +1031,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ),
           actions: [
             TvFocusable(
+              focusNode: cancelBtnFocus,
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    focusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                    submitBtnFocus.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                }
+                return KeyEventResult.ignored;
+              },
               onPressed: () => Navigator.of(ctx).pop(),
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xFF1E293B),
@@ -963,6 +1051,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               child: const Text('Batal', style: TextStyle(color: Colors.white70)),
             ),
             TvFocusable(
+              focusNode: submitBtnFocus,
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    focusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                    cancelBtnFocus.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                }
+                return KeyEventResult.ignored;
+              },
               onPressed: () {
                 final query = dialogController.text.trim();
                 Navigator.of(ctx).pop();
@@ -1004,8 +1105,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             children: [
               Expanded(
                 child: TvFocusable(
+                  focusNode: _searchInputFocusNode,
                   autofocus: true,
                   onPressed: _openTvSearchDialog,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        _tabFocusNodes[4].requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        if (queryText.isNotEmpty) {
+                          _searchClearFocusNode.requestFocus();
+                        } else {
+                          _searchSubmitBtnFocusNode.requestFocus();
+                        }
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   borderRadius: BorderRadius.circular(10),
                   backgroundColor: const Color(0xFF1E293B),
                   focusedBackgroundColor: const Color(0xFF334155),
@@ -1042,6 +1160,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               const SizedBox(width: 12),
               if (queryText.isNotEmpty) ...[
                 TvFocusable(
+                  focusNode: _searchClearFocusNode,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        _tabFocusNodes[4].requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        _searchInputFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        _searchSubmitBtnFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   onPressed: () {
                     setState(() {
                       _searchController.clear();
@@ -1063,6 +1197,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 const SizedBox(width: 10),
               ],
               TvFocusable(
+                focusNode: _searchSubmitBtnFocusNode,
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      _tabFocusNodes[4].requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      if (queryText.isNotEmpty) {
+                        _searchClearFocusNode.requestFocus();
+                      } else {
+                        _searchInputFocusNode.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
                 onPressed: () {
                   if (_searchController.text.trim().isNotEmpty) {
                     _performSearch(_searchController.text);
@@ -1191,6 +1342,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     String testResult = '';
     bool? testSuccess;
 
+    final preset1Focus = FocusNode();
+    final preset2Focus = FocusNode();
+    final hostFieldFocus = FocusNode();
+    final testBtnFocus = FocusNode();
+    final cancelBtnFocus = FocusNode();
+    final saveBtnFocus = FocusNode();
+
     showDialog(
       context: context,
       builder: (ctx) {
@@ -1217,6 +1375,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     Row(
                       children: [
                         TvFocusable(
+                          focusNode: preset1Focus,
+                          onKeyEvent: (node, event) {
+                            if (event is KeyDownEvent) {
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                hostFieldFocus.requestFocus();
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                preset2Focus.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
                           onPressed: () {
                             textController.text = 'https://narto-drama.com';
                             setDialogState(() {
@@ -1231,6 +1402,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         ),
                         const SizedBox(width: 8),
                         TvFocusable(
+                          focusNode: preset2Focus,
+                          onKeyEvent: (node, event) {
+                            if (event is KeyDownEvent) {
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                hostFieldFocus.requestFocus();
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                preset1Focus.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
                           onPressed: () {
                             textController.text = 'https://narto-drama.vercel.app';
                             setDialogState(() {
@@ -1248,23 +1432,51 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     const SizedBox(height: 16),
                     const Text('URL Endpoint Upstream:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
-                    TextField(
-                      controller: textController,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: const Color(0xFF0F172A),
-                        hintText: 'https://...',
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5)),
+                    Focus(
+                      focusNode: hostFieldFocus,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent) {
+                          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                            testBtnFocus.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            preset1Focus.requestFocus();
+                            return KeyEventResult.handled;
+                          }
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: TextField(
+                        controller: textController,
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          hintText: 'https://...',
+                          hintStyle: const TextStyle(color: Colors.white38),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5)),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         TvFocusable(
+                          focusNode: testBtnFocus,
+                          onKeyEvent: (node, event) {
+                            if (event is KeyDownEvent) {
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                hostFieldFocus.requestFocus();
+                                return KeyEventResult.handled;
+                              } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                saveBtnFocus.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                            }
+                            return KeyEventResult.ignored;
+                          },
                           onPressed: isTesting
                               ? null
                               : () async {
@@ -1316,6 +1528,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               ),
               actions: [
                 TvFocusable(
+                  focusNode: cancelBtnFocus,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        testBtnFocus.requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        saveBtnFocus.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   onPressed: () => Navigator.of(ctx).pop(),
                   borderRadius: BorderRadius.circular(8),
                   backgroundColor: const Color(0xFF334155),
@@ -1324,6 +1549,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 ),
                 const SizedBox(width: 8),
                 TvFocusable(
+                  focusNode: saveBtnFocus,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        testBtnFocus.requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        cancelBtnFocus.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   onPressed: () async {
                     final target = textController.text.trim();
                     if (target.isNotEmpty) {
@@ -1362,72 +1600,85 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(36, 16, 36, 28),
-      child: ListView(
-        children: [
-          const Text(
-            'Pengaturan Narto Drama TV',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-
-          // 1. API Host Configuration Card
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : Colors.white12),
+      child: SingleChildScrollView(
+        controller: _settingsScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Pengaturan Narto Drama TV',
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.dns_rounded, color: Color(0xFF38BDF8), size: 22),
-                    const SizedBox(width: 10),
-                    const Text('API Host Upstream', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isCustomHost ? const Color(0xFF0284C7).withValues(alpha: 0.2) : const Color(0xFF10B981).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981)),
-                      ),
-                      child: Text(
-                        isCustomHost ? 'Mirror Kustom' : 'Resmi Default',
-                        style: TextStyle(
-                          color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+            const SizedBox(height: 16),
+
+            // 1. API Host Configuration Card
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.dns_rounded, color: Color(0xFF38BDF8), size: 22),
+                      const SizedBox(width: 10),
+                      const Text('API Host Upstream', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isCustomHost ? const Color(0xFF0284C7).withValues(alpha: 0.2) : const Color(0xFF10B981).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981)),
+                        ),
+                        child: Text(
+                          isCustomHost ? 'Mirror Kustom' : 'Resmi Default',
+                          style: TextStyle(
+                            color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  AppSettings.baseUrl,
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    TvFocusable(
-                      onPressed: _showHostConfigDialog,
-                      borderRadius: BorderRadius.circular(6),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      backgroundColor: const Color(0xFF0284C7),
-                      focusedBackgroundColor: const Color(0xFF38BDF8),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
-                          SizedBox(width: 8),
-                          Text('Ganti Host Upstream', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    AppSettings.baseUrl,
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      TvFocusable(
+                        focusNode: _settingsFirstFocusNode,
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            _tabFocusNodes[5].requestFocus();
+                            _settingsScrollController.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        onPressed: _showHostConfigDialog,
+                        borderRadius: BorderRadius.circular(6),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        backgroundColor: const Color(0xFF0284C7),
+                        focusedBackgroundColor: const Color(0xFF38BDF8),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                            SizedBox(width: 8),
+                            Text('Ganti Host Upstream', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       ),
-                    ),
                     if (isCustomHost) ...[
                       const SizedBox(width: 12),
                       TvFocusable(
@@ -1909,8 +2160,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildColorChip(String label, int colorValue) {
     final isSelected = AppSettings.subtitleFontColor == colorValue;
@@ -1922,7 +2174,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       borderRadius: BorderRadius.circular(6),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
-      focusedBackgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF334155),
+      focusedBackgroundColor: isSelected ? const Color(0xFFFF5277) : const Color(0xFF334155),
+      focusBorderColor: isSelected ? Colors.white : const Color(0xFFFF2D55),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1932,10 +2185,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             decoration: BoxDecoration(
               color: Color(colorValue),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white54, width: 1),
+              border: Border.all(color: Colors.white70, width: 1.5),
             ),
           ),
           const SizedBox(width: 8),
+          if (isSelected) ...[
+            const Icon(Icons.check_circle_rounded, size: 14, color: Colors.white),
+            const SizedBox(width: 4),
+          ],
           Text(
             label,
             style: TextStyle(
@@ -1968,14 +2225,24 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       borderRadius: BorderRadius.circular(6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
-      focusedBackgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF334155),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-          fontSize: 12,
-        ),
+      focusedBackgroundColor: isSelected ? const Color(0xFFFF5277) : const Color(0xFF334155),
+      focusBorderColor: isSelected ? Colors.white : const Color(0xFFFF2D55),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isSelected) ...[
+            const Icon(Icons.check_circle_rounded, size: 14, color: Colors.white),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -47,7 +47,12 @@ class AppSettings {
 
   static String get subtitlePosition => _subtitlePosition;
   static double get subtitleVerticalOffset => _subtitleVerticalOffset;
-  static double get subtitleFontSize => _subtitleFontSize;
+  static double get subtitleFontSize {
+    if (_subtitleFontSize != 18.0 && _subtitleFontSize != 24.0 && _subtitleFontSize != 28.0 && _subtitleFontSize != 34.0) {
+      return 24.0;
+    }
+    return _subtitleFontSize;
+  }
   static int get subtitleFontColor => _subtitleFontColor;
   static String get subtitleFontWeight => _subtitleFontWeight;
   static String get subtitleFontFamily => _subtitleFontFamily;
@@ -114,7 +119,12 @@ class AppSettings {
           _subtitleVerticalOffset = 0.50;
       }
     }
-    _subtitleFontSize = prefs.getDouble(keySubtitleFontSize) ?? 24.0;
+    final savedFontSize = prefs.getDouble(keySubtitleFontSize);
+    if (savedFontSize == null || ![18.0, 24.0, 28.0, 34.0].contains(savedFontSize)) {
+      _subtitleFontSize = 24.0;
+    } else {
+      _subtitleFontSize = savedFontSize;
+    }
     _subtitleFontColor = prefs.getInt(keySubtitleFontColor) ?? 0xFFFFFFFF;
     _subtitleFontWeight = prefs.getString(keySubtitleFontWeight) ?? 'bold';
     _subtitleFontFamily = prefs.getString(keySubtitleFontFamily) ?? 'sans-serif';

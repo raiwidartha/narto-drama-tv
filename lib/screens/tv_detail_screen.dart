@@ -217,13 +217,13 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
     final targetEpIndex = _lastWatchedEpIndex ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 24, 36, 24),
+      padding: const EdgeInsets.fromLTRB(32, 20, 32, 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left Column: Poster & Actions (280px)
+          // Left Column: Poster & Actions (210px) - clean, portrait, uncropped
           SizedBox(
-            width: 280,
+            width: 210,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -233,34 +233,44 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                   children: [
                     TvFocusable(
                       onPressed: () => Navigator.of(context).pop(),
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(7),
                       backgroundColor: const Color(0xFF1E293B),
-                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         widget.drama.providerKey?.toUpperCase() ?? 'NARTO DRAMA',
                         style: const TextStyle(
                           color: Color(0xFF38BDF8),
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
+                          letterSpacing: 0.8,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
-                // Poster Image
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio: 16 / 9,
+                // Poster Image (Portrait, exactly same ratio as preview/card, uncropped)
+                Container(
+                  width: 210,
+                  height: 290,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12, width: 0.8),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
                     child: CachedNetworkImage(
                       imageUrl: poster,
-                      memCacheWidth: 480,
+                      memCacheWidth: 420,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
                         color: const Color(0xFF1E293B),
@@ -273,34 +283,34 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Primary Action Button (Tonton Sekarang)
                 TvFocusable(
                   autofocus: true,
                   onPressed: () => _openPlayer(targetEpIndex),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   backgroundColor: const Color(0xFFFF2D55),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
-                      const SizedBox(width: 8),
+                      const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                      const SizedBox(width: 6),
                       Text(
                         _lastWatchedEpIndex != null
                             ? 'Lanjut Ep ${_lastWatchedEpIndex! + 1}'
                             : 'Tonton Sekarang',
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
 
-                // Secondary Action: Bookmark
+                // Secondary Action: Bookmark (Simpan ke Favorit)
                 TvFocusable(
                   onPressed: _toggleBookmark,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
                   backgroundColor: const Color(0xFF1E293B),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -308,14 +318,14 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       Icon(
                         _isBookmarked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                         color: _isBookmarked ? const Color(0xFFFF2D55) : Colors.white70,
-                        size: 20,
+                        size: 18,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Text(
-                        _isBookmarked ? 'Tersimpan di Favorit' : 'Simpan ke Favorit',
+                        _isBookmarked ? 'Tersimpan Favorit' : 'Simpan ke Favorit',
                         style: TextStyle(
                           color: _isBookmarked ? const Color(0xFFFF2D55) : Colors.white,
-                          fontSize: 13,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -325,7 +335,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 32),
+          const SizedBox(width: 28),
 
           // Right Column: Title, Synopsis & Episode Grid
           Expanded(
@@ -384,11 +394,12 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                 TvFocusable(
                   onPressed: () => _showFullSynopsisModal(title, synopsis),
                   borderRadius: BorderRadius.circular(10),
-                  backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.7),
+                  backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.8),
                   focusedBackgroundColor: const Color(0xFF334155),
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
                         children: [
@@ -401,25 +412,25 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                           const Spacer(),
                           Text(
                             'Tekan OK untuk baca lengkap',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11),
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                           ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         synopsis,
-                        maxLines: 3,
+                        maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Color(0xFFCBD5E1),
-                          fontSize: 13,
+                          fontSize: 12.5,
                           height: 1.45,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Header Daftar Episode
                 Row(
@@ -429,7 +440,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       'Daftar Episode',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -437,14 +448,14 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       'Pilih episode untuk langsung memutar',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.4),
-                        fontSize: 12,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
 
-                // Grid of episodes
+                // Grid of episodes - compact so synopsis has plenty of room
                 Expanded(
                   child: episodes.isEmpty
                       ? const Center(
@@ -456,10 +467,10 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       : GridView.builder(
                           physics: const BouncingScrollPhysics(),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 6,
-                            childAspectRatio: 1.6,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
+                            crossAxisCount: 7,
+                            childAspectRatio: 2.1,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
                           ),
                           itemCount: episodes.length,
                           itemBuilder: (context, index) {
@@ -468,11 +479,12 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
 
                             return TvFocusable(
                               onPressed: () => _openPlayer(index),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                               backgroundColor: isCurrent
                                   ? const Color(0xFFFF2D55)
                                   : (isWatched
-                                      ? const Color(0xFF1E293B).withValues(alpha: 0.8)
+                                      ? const Color(0xFF1E293B).withValues(alpha: 0.85)
                                       : const Color(0xFF1E293B)),
                               focusedBackgroundColor: isCurrent
                                   ? const Color(0xFFFF2D55)
@@ -480,18 +492,19 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                               child: Center(
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     if (isWatched && !isCurrent)
                                       const Padding(
-                                        padding: EdgeInsets.only(right: 4),
-                                        child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 12),
+                                        padding: EdgeInsets.only(right: 3),
+                                        child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 11),
                                       ),
                                     Text(
                                       'EP ${index + 1}',
                                       style: TextStyle(
                                         color: isCurrent || isWatched ? Colors.white : Colors.white70,
                                         fontWeight: isCurrent ? FontWeight.w900 : FontWeight.w600,
-                                        fontSize: 13,
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ],

@@ -91,6 +91,14 @@ class DramaItem {
         json['intro']?.toString() ??
         json['summary']?.toString();
 
+    final rawProv = defaultProvider ??
+        json['provider']?.toString() ??
+        json['provider_key']?.toString() ??
+        (json['source_type'] != null && json['source_type'].toString().isNotEmpty
+            ? (json['source_type'] == 'local' ? 'Narto' : json['source_type'].toString())
+            : null) ??
+        'Narto';
+
     return DramaItem(
       id: idVal,
       title: titleVal,
@@ -99,7 +107,7 @@ class DramaItem {
       episodeCount: epCount,
       description: descVal,
       tags: tagsList,
-      providerKey: defaultProvider ?? json['provider']?.toString(),
+      providerKey: rawProv,
     );
   }
 }

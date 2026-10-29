@@ -16,6 +16,7 @@ class TvFocusable extends StatefulWidget {
   final Color? backgroundColor;
   final Color? focusedBackgroundColor;
   final String? tooltip;
+  final KeyEventResult Function(FocusNode, KeyEvent)? onKeyEvent;
 
   const TvFocusable({
     super.key,
@@ -32,6 +33,7 @@ class TvFocusable extends StatefulWidget {
     this.backgroundColor,
     this.focusedBackgroundColor,
     this.tooltip,
+    this.onKeyEvent,
   });
 
   @override
@@ -54,6 +56,14 @@ class _TvFocusableState extends State<TvFocusable> {
       setState(() {
         _isFocused = _node.hasFocus;
       });
+      if (_node.hasFocus) {
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.25,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+        );
+      }
     }
   }
 
@@ -83,6 +93,12 @@ class _TvFocusableState extends State<TvFocusable> {
       focusNode: _node,
       autofocus: widget.autofocus,
       onKeyEvent: (node, event) {
+        if (widget.onKeyEvent != null) {
+          final res = widget.onKeyEvent!(node, event);
+          if (res != KeyEventResult.ignored) {
+            return res;
+          }
+        }
         if (event is KeyDownEvent) {
           if (event.logicalKey == LogicalKeyboardKey.select ||
               event.logicalKey == LogicalKeyboardKey.enter ||

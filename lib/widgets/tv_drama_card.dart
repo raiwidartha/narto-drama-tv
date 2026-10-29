@@ -9,12 +9,14 @@ class TvDramaCard extends StatelessWidget {
   final bool autofocus;
   final double width;
   final double height;
+  final FocusNode? focusNode;
 
   const TvDramaCard({
     super.key,
     required this.drama,
     required this.onTap,
     this.autofocus = false,
+    this.focusNode,
     this.width = 160,
     this.height = 240,
   });
@@ -22,6 +24,7 @@ class TvDramaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
+      focusNode: focusNode,
       autofocus: autofocus,
       onPressed: onTap,
       scale: 1.06,
@@ -80,28 +83,30 @@ class TvDramaCard extends StatelessWidget {
                   ),
 
                   // Provider tag (top left)
-                  if ((drama.providerKey ?? '').isNotEmpty)
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.white12, width: 0.5),
-                        ),
-                        child: Text(
-                          drama.providerKey!.toUpperCase(),
-                          style: const TextStyle(
-                            color: Color(0xFF38BDF8),
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF2D55).withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.white24, width: 0.5),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
+                        ],
+                      ),
+                      child: Text(
+                        (drama.providerKey?.isNotEmpty == true ? drama.providerKey! : 'NARTO').toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
                         ),
                       ),
                     ),
+                  ),
 
                   // Episode count tag (top right)
                   if ((drama.episodeCount ?? '').isNotEmpty)

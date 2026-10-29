@@ -419,10 +419,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         return KeyEventResult.handled;
       }
 
+      // Any remote interaction while controls are up resets the hide timer
+      _showHudTemporarily(persistent: false);
+
       // Check if seek bar is focused
       if (_seekBarFocusNode.hasFocus) {
         if (key == LogicalKeyboardKey.arrowDown) {
-          // Down FROM seek bar opens Episode Drawer
+          // Down FROM seek bar opens Episode Drawer (AnimeIn TV parity)
           setState(() {
             _showControls = false;
             _showEpisodeDrawer = true;
@@ -454,28 +457,35 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         key == LogicalKeyboardKey.space ||
         key == LogicalKeyboardKey.gameButtonA) {
       _togglePlayPause();
+      _showHudTemporarily(persistent: false);
+      _playPauseFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowLeft) {
       _seekBy(-10);
+      _showHudTemporarily(persistent: false);
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowRight) {
       _seekBy(10);
+      _showHudTemporarily(persistent: false);
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowUp) {
-      _showHudTemporarily(persistent: true);
+      _showHudTemporarily(persistent: false);
       _playPauseFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      _showHudTemporarily(persistent: true);
-      _seekBarFocusNode.requestFocus();
+      // Down while watching video opens Episode Drawer directly (AnimeIn TV parity)
+      setState(() {
+        _showControls = false;
+        _showEpisodeDrawer = true;
+      });
       return KeyEventResult.handled;
     }
 
