@@ -101,11 +101,37 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
     _loadHistoryAndBookmark();
   }
 
+  String get _effectiveProvider {
+    final detailProv = _detail?.providerName?.trim();
+    if (detailProv != null &&
+        detailProv.isNotEmpty &&
+        detailProv.toLowerCase() != 'narto' &&
+        detailProv.toLowerCase() != 'local') {
+      return detailProv;
+    }
+    final dramaProv = widget.drama.providerKey?.trim();
+    if (dramaProv != null &&
+        dramaProv.isNotEmpty &&
+        dramaProv.toLowerCase() != 'narto' &&
+        dramaProv.toLowerCase() != 'local') {
+      return dramaProv;
+    }
+    final detected = DramaItem.detectProvider(
+      watchUrl: widget.drama.watchUrl,
+      tags: widget.drama.tags,
+    );
+    if (detected.isNotEmpty && detected.toLowerCase() != 'narto') {
+      return detected;
+    }
+    return 'NARTO DRAMA';
+  }
+
   void _toggleBookmark() async {
     final detail = _detail;
     final title = detail?.title ?? widget.drama.title;
     final poster = (detail?.posterUrl.isNotEmpty ?? false) ? detail!.posterUrl : widget.drama.posterUrl;
     final totalEp = detail?.episodes.length ?? int.tryParse(widget.drama.episodeCount ?? '0') ?? 0;
+    final effectiveProv = _effectiveProvider;
 
     await HistoryBookmarkService.toggleBookmark(
       dramaKey: widget.drama.historyKey,
@@ -113,7 +139,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
       title: title,
       posterUrl: poster,
       watchUrl: widget.drama.watchUrl,
-      provider: widget.drama.providerKey ?? detail?.providerName ?? 'narto',
+      provider: effectiveProv != 'NARTO DRAMA' ? effectiveProv : (widget.drama.providerKey ?? 'narto'),
       totalEpisodes: totalEp,
     );
 
@@ -240,7 +266,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        widget.drama.providerKey?.toUpperCase() ?? 'NARTO DRAMA',
+                        _effectiveProvider.toUpperCase(),
                         style: const TextStyle(
                           color: Color(0xFF38BDF8),
                           fontSize: 11,

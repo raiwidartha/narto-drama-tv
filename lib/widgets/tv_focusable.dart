@@ -57,12 +57,20 @@ class _TvFocusableState extends State<TvFocusable> {
         _isFocused = _node.hasFocus;
       });
       if (_node.hasFocus) {
-        Scrollable.ensureVisible(
-          context,
-          alignment: 0.25,
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          try {
+            final ro = context.findRenderObject();
+            if (ro != null && ro.attached && ro is RenderBox && ro.hasSize) {
+              Scrollable.ensureVisible(
+                context,
+                alignment: 0.25,
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+              );
+            }
+          } catch (_) {}
+        });
       }
     }
   }

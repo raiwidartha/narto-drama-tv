@@ -7,8 +7,27 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narto_drama_tv/main.dart';
+import 'package:narto_drama_tv/models/drama.dart';
 
 void main() {
+  test('Search provider detection test', () async {
+    final itemJson = {
+      'id': 23415,
+      'title': 'Sekretarisku yang Pernah Menjadi Istriku',
+      'tags': [
+        'Romantis', 'Komedi Romantis', 'Kantoran', 'Korea', 'Cinderella', 'Nikah Kontrak',
+        'Exclusive', 'Komedi', 'Miliarder', 'Billionaire', 'Romance', 'Comedy', 'Office',
+        'Rom-Com', 'Nikah Sebelum Cinta', 'Eksklusif', 'Vigloo Asli', 'Marriage Before Love',
+        'Contract Marriage', 'Vigloo Original'
+      ],
+      'source_type': 'local',
+      'url': '/detail/watch/my-secretary-who-once-was-my-wife?lang=id-ID&from=search',
+    };
+    final drama = DramaItem.fromJson(itemJson);
+    print('DRAMA PROVIDER KEY: ${drama.providerKey}');
+    expect(drama.providerKey, equals('vigloo'));
+  });
+
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const NartoDramaTvApp());
     expect(find.byType(NartoDramaTvApp), findsOneWidget);

@@ -93,6 +93,40 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     try {
       if (_activeProvider == 'general') {
+        try {
+          final res = await NartoApiService.fetchProviderSections(
+            provider: 'all',
+            page: _homePage,
+          );
+          final sections = res['sections'] as List<ProviderSection>? ?? [];
+          final apiProviders = res['providers'] as List<ProviderInfo>?;
+          final List<DramaItem> items = [];
+          for (final sec in sections) {
+            items.addAll(sec.items);
+          }
+          final seen = <String>{};
+          final uniqueItems = <DramaItem>[];
+          for (final item in items) {
+            if (seen.add(item.historyKey)) {
+              uniqueItems.add(item);
+            }
+          }
+          if (uniqueItems.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                if (apiProviders != null && apiProviders.isNotEmpty) {
+                  _providers = apiProviders;
+                }
+                _homeDramas = reset ? uniqueItems : [..._homeDramas, ...uniqueItems];
+                _hasMoreHome = false;
+                _homePage++;
+                _isLoadingHome = false;
+              });
+            }
+            return;
+          }
+        } catch (_) {}
+
         final res = await NartoApiService.fetchGeneralCatalog(page: _homePage);
         if (mounted) {
           setState(() {
@@ -868,14 +902,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     itemCount: _historyItems.length,
                     itemBuilder: (context, index) {
                       final item = _historyItems[index];
-                      final drama = DramaItem(
-                        id: item.id,
-                        title: item.title,
-                        posterUrl: item.posterUrl,
-                        watchUrl: item.watchUrl,
-                        providerKey: item.provider,
-                        episodeCount: item.totalEpisodes.toString(),
-                      );
+                      final drama = item.toDramaItem();
                       return TvDramaCard(
                         drama: drama,
                         focusNode: index == 0 ? _firstHistoryFocusNode : null,
@@ -933,14 +960,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     itemCount: _bookmarkItems.length,
                     itemBuilder: (context, index) {
                       final item = _bookmarkItems[index];
-                      final drama = DramaItem(
-                        id: item.id,
-                        title: item.title,
-                        posterUrl: item.posterUrl,
-                        watchUrl: item.watchUrl,
-                        providerKey: item.provider,
-                        episodeCount: item.totalEpisodes.toString(),
-                      );
+                      final drama = item.toDramaItem();
                       return TvDramaCard(
                         drama: drama,
                         focusNode: index == 0 ? _firstBookmarkFocusNode : null,
@@ -1336,15 +1356,114 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // --- TAB 5: PENGATURAN ---
+  Future<String?> _showManualUrlInputDialog(BuildContext parentCtx, String initialUrl) {
+    final controller = TextEditingController(text: initialUrl);
+    final cancelFocus = FocusNode();
+    final submitFocus = FocusNode();
+
+    return showDialog<String>(
+      context: parentCtx,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_note_rounded, color: Color(0xFF38BDF8), size: 26),
+            SizedBox(width: 10),
+            Text('Ketik URL Host Manual', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ketik URL endpoint server (contoh: https://narto-drama.vercel.app):',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    submitFocus.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 1,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'monospace'),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (val) {
+                    Navigator.of(dialogCtx).pop(val.trim());
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'https://...',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0xFF1E293B),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFFF2D55), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TvFocusable(
+            focusNode: cancelFocus,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                submitFocus.requestFocus();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: const Color(0xFF334155),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: const Text('Batal', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 8),
+          TvFocusable(
+            focusNode: submitFocus,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                cancelFocus.requestFocus();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            onPressed: () => Navigator.of(dialogCtx).pop(controller.text.trim()),
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: const Color(0xFFFF2D55),
+            focusedBackgroundColor: const Color(0xFFFF5377),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: const Text('Gunakan URL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showHostConfigDialog() {
-    final textController = TextEditingController(text: AppSettings.baseUrl);
+    String currentTargetUrl = AppSettings.baseUrl;
     bool isTesting = false;
     String testResult = '';
     bool? testSuccess;
 
     final preset1Focus = FocusNode();
     final preset2Focus = FocusNode();
-    final hostFieldFocus = FocusNode();
+    final editUrlBtnFocus = FocusNode();
     final testBtnFocus = FocusNode();
     final cancelBtnFocus = FocusNode();
     final saveBtnFocus = FocusNode();
@@ -1352,8 +1471,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          preset1Focus.requestFocus();
+        });
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
+            final isResmi = currentTargetUrl == 'https://narto-drama.com';
+            final isVercel = currentTargetUrl == 'https://narto-drama.vercel.app';
+
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1365,12 +1490,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 ],
               ),
               content: SizedBox(
-                width: 560,
+                width: 580,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Pilih Preset Host:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const Text('Pilih Preset Host Cepat:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -1379,7 +1504,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           onKeyEvent: (node, event) {
                             if (event is KeyDownEvent) {
                               if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                                hostFieldFocus.requestFocus();
+                                editUrlBtnFocus.requestFocus();
                                 return KeyEventResult.handled;
                               } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                                 preset2Focus.requestFocus();
@@ -1389,16 +1514,24 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             return KeyEventResult.ignored;
                           },
                           onPressed: () {
-                            textController.text = 'https://narto-drama.com';
                             setDialogState(() {
+                              currentTargetUrl = 'https://narto-drama.com';
                               testResult = '';
                               testSuccess = null;
                             });
                           },
                           borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          backgroundColor: textController.text == 'https://narto-drama.com' ? const Color(0xFF0284C7) : const Color(0xFF334155),
-                          child: const Text('Resmi (narto-drama.com)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          backgroundColor: isResmi ? const Color(0xFF0284C7) : const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFF0369A1),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isResmi) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                              if (isResmi) const SizedBox(width: 6),
+                              const Text('Resmi (narto-drama.com)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
                         const SizedBox(width: 8),
                         TvFocusable(
@@ -1406,7 +1539,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           onKeyEvent: (node, event) {
                             if (event is KeyDownEvent) {
                               if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                                hostFieldFocus.requestFocus();
+                                editUrlBtnFocus.requestFocus();
                                 return KeyEventResult.handled;
                               } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                                 preset1Focus.requestFocus();
@@ -1416,24 +1549,32 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             return KeyEventResult.ignored;
                           },
                           onPressed: () {
-                            textController.text = 'https://narto-drama.vercel.app';
                             setDialogState(() {
+                              currentTargetUrl = 'https://narto-drama.vercel.app';
                               testResult = '';
                               testSuccess = null;
                             });
                           },
                           borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          backgroundColor: textController.text == 'https://narto-drama.vercel.app' ? const Color(0xFF0284C7) : const Color(0xFF334155),
-                          child: const Text('Mirror Edge Vercel', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          backgroundColor: isVercel ? const Color(0xFF0284C7) : const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFF0369A1),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isVercel) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                              if (isVercel) const SizedBox(width: 6),
+                              const Text('Mirror Edge Vercel', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Text('URL Endpoint Upstream:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const Text('URL Endpoint Aktif / Custom:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     TvFocusable(
-                      focusNode: hostFieldFocus,
+                      focusNode: editUrlBtnFocus,
                       onKeyEvent: (node, event) {
                         if (event is KeyDownEvent) {
                           if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -1447,64 +1588,48 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         return KeyEventResult.ignored;
                       },
                       onPressed: () async {
-                        final editController = TextEditingController(text: textController.text);
-                        final customUrl = await showDialog<String>(
-                          context: dialogCtx,
-                          builder: (editCtx) {
-                            return AlertDialog(
-                              backgroundColor: const Color(0xFF0F172A),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              title: const Text('Ketik URL Endpoint Host', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                              content: TextField(
-                                controller: editController,
-                                autofocus: true,
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: const InputDecoration(
-                                  hintText: 'https://...',
-                                  hintStyle: TextStyle(color: Colors.white38),
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(editCtx).pop(),
-                                  child: const Text('Batal', style: TextStyle(color: Colors.white54)),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => Navigator.of(editCtx).pop(editController.text.trim()),
-                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2D55)),
-                                  child: const Text('Gunakan URL Ini', style: TextStyle(color: Colors.white)),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                        if (customUrl != null && customUrl.isNotEmpty) {
-                          textController.text = customUrl;
+                        final inputUrl = await _showManualUrlInputDialog(ctx, currentTargetUrl);
+                        if (inputUrl != null && inputUrl.isNotEmpty) {
                           setDialogState(() {
+                            currentTargetUrl = inputUrl;
                             testResult = '';
                             testSuccess = null;
                           });
+                          saveBtnFocus.requestFocus();
                         }
                       },
                       borderRadius: BorderRadius.circular(8),
                       backgroundColor: const Color(0xFF0F172A),
                       focusedBackgroundColor: const Color(0xFF1E293B),
-                      focusBorderColor: const Color(0xFF38BDF8),
+                      focusBorderColor: const Color(0xFFFF2D55),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       child: Row(
                         children: [
+                          const Icon(Icons.link_rounded, color: Color(0xFF38BDF8), size: 18),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              textController.text.isNotEmpty ? textController.text : 'https://...',
+                              currentTargetUrl,
                               style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
-                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.edit_rounded, color: Color(0xFF38BDF8), size: 16),
-                          const SizedBox(width: 4),
-                          const Text('Ubah', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF334155),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.edit_rounded, color: Colors.white70, size: 12),
+                                SizedBox(width: 4),
+                                Text('Ketik URL', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1516,7 +1641,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           onKeyEvent: (node, event) {
                             if (event is KeyDownEvent) {
                               if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                hostFieldFocus.requestFocus();
+                                editUrlBtnFocus.requestFocus();
                                 return KeyEventResult.handled;
                               } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                                 saveBtnFocus.requestFocus();
@@ -1533,7 +1658,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                     testResult = 'Menguji respon host...';
                                     testSuccess = null;
                                   });
-                                  final res = await AppSettings.testConnection(textController.text);
+                                  final res = await AppSettings.testConnection(currentTargetUrl);
                                   setDialogState(() {
                                     isTesting = false;
                                     testSuccess = res['success'] == true;
@@ -1611,7 +1736,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     return KeyEventResult.ignored;
                   },
                   onPressed: () async {
-                    final target = textController.text.trim();
+                    final target = currentTargetUrl.trim();
                     if (target.isNotEmpty) {
                       await AppSettings.setBaseUrl(target);
                       if (ctx.mounted) {

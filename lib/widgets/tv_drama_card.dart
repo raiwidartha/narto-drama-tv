@@ -83,30 +83,31 @@ class TvDramaCard extends StatelessWidget {
                   ),
 
                   // Provider tag (top left)
-                  Positioned(
-                    top: 6,
-                    left: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF2D55).withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.white24, width: 0.5),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
-                        ],
-                      ),
-                      child: Text(
-                        (drama.providerKey?.isNotEmpty == true ? drama.providerKey! : 'NARTO').toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.6,
+                  if (drama.displayProvider.isNotEmpty)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF2D55).withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white24, width: 0.5),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
+                          ],
+                        ),
+                        child: Text(
+                          drama.displayProvider,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.6,
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
                   // Episode count tag (top right)
                   if ((drama.episodeCount ?? '').isNotEmpty)

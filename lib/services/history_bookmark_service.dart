@@ -35,12 +35,17 @@ class HistoryItem {
   }
 
   DramaItem toDramaItem() {
+    final effectiveProv = (provider.isNotEmpty &&
+            provider.toLowerCase() != 'narto' &&
+            provider.toLowerCase() != 'local')
+        ? provider
+        : DramaItem.detectProvider(watchUrl: watchUrl);
     return DramaItem(
       id: id.isNotEmpty ? id : key,
       title: title,
       posterUrl: posterUrl,
       watchUrl: watchUrl.isNotEmpty ? watchUrl : '/detail/watch/$key/1',
-      providerKey: provider.isNotEmpty ? provider : null,
+      providerKey: (effectiveProv.isNotEmpty && effectiveProv.toLowerCase() != 'narto') ? effectiveProv : null,
       episodeCount: totalEpisodes > 0 ? '$totalEpisodes' : null,
     );
   }
@@ -144,12 +149,17 @@ class BookmarkItem {
   });
 
   DramaItem toDramaItem() {
+    final effectiveProv = (provider.isNotEmpty &&
+            provider.toLowerCase() != 'narto' &&
+            provider.toLowerCase() != 'local')
+        ? provider
+        : DramaItem.detectProvider(watchUrl: watchUrl);
     return DramaItem(
       id: id.isNotEmpty ? id : key,
       title: title,
       posterUrl: posterUrl,
       watchUrl: watchUrl.isNotEmpty ? watchUrl : '/detail/watch/$key/1',
-      providerKey: provider.isNotEmpty ? provider : null,
+      providerKey: (effectiveProv.isNotEmpty && effectiveProv.toLowerCase() != 'narto') ? effectiveProv : null,
       episodeCount: totalEpisodes > 0 ? '$totalEpisodes' : null,
     );
   }

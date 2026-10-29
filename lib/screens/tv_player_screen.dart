@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -46,10 +47,36 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   String _seekIndicatorText = '';
   Timer? _seekIndicatorTimer;
 
+  // Episode drawer focus & scroll controllers
+  final ScrollController _episodeScrollController = ScrollController();
+  final Map<int, FocusNode> _episodeFocusNodes = {};
+
   // TV focus node for root key interception
   final FocusNode _rootFocusNode = FocusNode();
   final FocusNode _playPauseFocusNode = FocusNode();
   final FocusNode _seekBarFocusNode = FocusNode();
+
+  void _openEpisodeDrawer() {
+    _hideControlsTimer?.cancel();
+    setState(() {
+      _showControls = false;
+      _showEpisodeDrawer = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_episodeScrollController.hasClients) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final targetOffset = (_currentIndex * 102.0) - (screenWidth / 2) + 51.0;
+        final maxScroll = _episodeScrollController.position.maxScrollExtent;
+        final clampedOffset = math.max(0.0, math.min(targetOffset, maxScroll));
+        _episodeScrollController.jumpTo(clampedOffset);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _episodeFocusNodes[_currentIndex]?.requestFocus();
+      });
+    });
+  }
 
   @override
   void initState() {
@@ -57,8 +84,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _currentIndex = widget.initialEpisodeIndex;
     _seekBarFocusNode.addListener(_onFocusChanged);
     _playPauseFocusNode.addListener(_onFocusChanged);
+    HardwareKeyboard.instance.addHandler(_onHardwareKey);
     _initController();
     _savePlaybackHistory();
+  }
+
+  bool _onHardwareKey(KeyEvent event) {
+    if (!mounted) return false;
+    if (event is! KeyDownEvent) return false;
+    final res = _handleTvKeyEvent(_rootFocusNode, event);
+    return res == KeyEventResult.handled;
   }
 
   void _onFocusChanged() {
@@ -70,6 +105,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void _savePlaybackHistory() {
     if (widget.drama.episodes.isNotEmpty && _currentIndex < widget.drama.episodes.length) {
       final ep = widget.drama.episodes[_currentIndex];
+      final prov = (widget.drama.providerName?.isNotEmpty == true &&
+              widget.drama.providerName!.toLowerCase() != 'narto' &&
+              widget.drama.providerName!.toLowerCase() != 'local')
+          ? widget.drama.providerName!
+          : DramaItem.detectProvider(watchUrl: ep.watchUrl);
       HistoryBookmarkService.saveHistory(
         dramaKey: widget.drama.historyKey,
         dramaId: widget.drama.id,
@@ -77,7 +117,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         title: widget.drama.title,
         posterUrl: widget.drama.posterUrl,
         watchUrl: ep.watchUrl,
-        provider: widget.drama.providerName ?? 'narto',
+        provider: (prov.isNotEmpty && prov.toLowerCase() != 'narto') ? prov : 'narto',
         episodeIndex: _currentIndex,
         totalEpisodes: widget.drama.episodes.length,
       );
@@ -407,20 +447,35 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    // If Episode Drawer is open, let its focus tree handle arrows
+    // If Episode Drawer is open, let its focus tree handle arrows or dismiss on up/back
     if (_showEpisodeDrawer) {
-      if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.arrowUp) {
+      if (key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.arrowUp ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.gameButtonB) {
         setState(() {
           _showEpisodeDrawer = false;
         });
+        _rootFocusNode.requestFocus();
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
     }
 
-    // If HUD Controls are showing, let buttons receive focus, or dismiss on back
+    // If HUD Controls are showing, pressing DOWN immediately hides the controls!
     if (_showControls) {
-      if (key == LogicalKeyboardKey.escape) {
+      if (key == LogicalKeyboardKey.arrowDown) {
+        _hideControlsTimer?.cancel();
+        setState(() {
+          _showControls = false;
+        });
+        _rootFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.gameButtonB) {
+        _hideControlsTimer?.cancel();
         setState(() {
           _showControls = false;
         });
@@ -429,37 +484,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
       // Any remote interaction while controls are up resets the hide timer
       _showHudTemporarily(persistent: false);
-
-      // Check if seek bar is focused
-      if (_seekBarFocusNode.hasFocus) {
-        if (key == LogicalKeyboardKey.arrowDown) {
-          // Down FROM seek bar opens Episode Drawer (AnimeIn TV parity)
-          setState(() {
-            _showControls = false;
-            _showEpisodeDrawer = true;
-          });
-          return KeyEventResult.handled;
-        } else if (key == LogicalKeyboardKey.arrowUp) {
-          _playPauseFocusNode.requestFocus();
-          return KeyEventResult.handled;
-        } else if (key == LogicalKeyboardKey.arrowLeft) {
-          _seekBy(-10);
-          return KeyEventResult.handled;
-        } else if (key == LogicalKeyboardKey.arrowRight) {
-          _seekBy(10);
-          return KeyEventResult.handled;
-        }
-      } else {
-        // If center controls has focus and user presses arrowDown, transfer focus to seek bar (Laju Pemutaran)
-        if (key == LogicalKeyboardKey.arrowDown) {
-          _seekBarFocusNode.requestFocus();
-          return KeyEventResult.handled;
-        }
-      }
       return KeyEventResult.ignored;
     }
 
     // When playing cleanly without HUD:
+    if (key == LogicalKeyboardKey.arrowDown) {
+      // Down while playing video opens Episode Drawer directly focused on current episode!
+      _openEpisodeDrawer();
+      return KeyEventResult.handled;
+    }
+
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.space ||
@@ -488,14 +522,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.arrowDown) {
-      // Down while playing video opens HUD and directly focuses Laju Pemutaran
-      _showHudTemporarily(persistent: false);
-      _seekBarFocusNode.requestFocus();
-      return KeyEventResult.handled;
-    }
-
-    if (key == LogicalKeyboardKey.escape) {
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.gameButtonB) {
       _confirmExitPlayer().then((shouldExit) {
         if (shouldExit && mounted) {
           Navigator.of(context).pop();
@@ -808,6 +837,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onHardwareKey);
+    _episodeScrollController.dispose();
+    for (final node in _episodeFocusNodes.values) {
+      node.dispose();
+    }
     _seekBarFocusNode.removeListener(_onFocusChanged);
     _playPauseFocusNode.removeListener(_onFocusChanged);
     _hideControlsTimer?.cancel();
@@ -856,7 +890,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       child: Focus(
         focusNode: _rootFocusNode,
         autofocus: true,
-        onKeyEvent: _handleTvKeyEvent,
         child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -1165,44 +1198,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         ],
                       ),
 
-                      // Bottom Progress & Focusable Seek Bar (Transit node between center & drawer)
+                      // Bottom Progress & Seek Bar Display
                       Padding(
                         padding: const EdgeInsets.fromLTRB(40, 0, 40, 20),
-                        child: TvFocusable(
-                          focusNode: _seekBarFocusNode,
-                          onPressed: _togglePlayPause,
-                          onKeyEvent: (node, event) {
-                            if (event is KeyDownEvent) {
-                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                                setState(() {
-                                  _showControls = false;
-                                  _showEpisodeDrawer = true;
-                                });
-                                return KeyEventResult.handled;
-                              } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                _playPauseFocusNode.requestFocus();
-                                return KeyEventResult.handled;
-                              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                                _seekBy(-10);
-                                _showHudTemporarily(persistent: false);
-                                return KeyEventResult.handled;
-                              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                                _seekBy(10);
-                                _showHudTemporarily(persistent: false);
-                                return KeyEventResult.handled;
-                              }
-                            }
-                            return KeyEventResult.ignored;
-                          },
-                          borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          backgroundColor: Colors.white.withValues(alpha: 0.05),
-                          focusedBackgroundColor: const Color(0xFF1E293B),
-                          focusBorderColor: const Color(0xFFFF2D55),
                           child: ValueListenableBuilder<VideoPlayerValue>(
                             valueListenable: _controller!,
                             builder: (context, val, child) {
-                              final isBarFocused = _seekBarFocusNode.hasFocus;
                               final pos = val.position;
                               final dur = val.duration;
                               final durMs = dur.inMilliseconds;
@@ -1221,8 +1228,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                 children: [
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
+                                    child: const SizedBox(
+                                      height: 6,
+                                      width: double.infinity,
+                                    ),
+                                  ),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
                                     child: SizedBox(
-                                      height: isBarFocused ? 10 : 6,
+                                      height: 6,
                                       width: double.infinity,
                                       child: Stack(
                                         fit: StackFit.expand,
@@ -1240,17 +1254,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                             alignment: Alignment.centerLeft,
                                             widthFactor: progress,
                                             child: Container(
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFFF2D55),
-                                                boxShadow: isBarFocused
-                                                    ? [
-                                                        const BoxShadow(
-                                                          color: Color(0xFFFF2D55),
-                                                          blurRadius: 8,
-                                                          spreadRadius: 2,
-                                                        ),
-                                                      ]
-                                                    : null,
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFFFF2D55),
                                               ),
                                             ),
                                           ),
@@ -1264,20 +1269,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                     children: [
                                       Text(
                                         _formatDuration(pos),
-                                        style: TextStyle(
-                                          color: isBarFocused ? const Color(0xFFFF2D55) : Colors.white70,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
                                           fontSize: 13,
-                                          fontWeight: isBarFocused ? FontWeight.bold : FontWeight.normal,
                                         ),
                                       ),
-                                      Text(
-                                        isBarFocused
-                                            ? '◄ ► Geser 10s • [Tengah] Jeda • [Bawah] Daftar Episode'
-                                            : 'Tekan [Bawah] untuk Kontrol Garis Laju',
+                                      const Text(
+                                        '◄ ► Geser 10s • [Bawah] Sembunyikan Kontrol • [Bawah 2x] Daftar Episode',
                                         style: TextStyle(
-                                          color: isBarFocused ? const Color(0xFF38BDF8) : Colors.white38,
+                                          color: Colors.white38,
                                           fontSize: 12,
-                                          fontWeight: isBarFocused ? FontWeight.bold : FontWeight.normal,
                                         ),
                                       ),
                                       Text(
@@ -1326,15 +1327,38 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                       const SizedBox(height: 12),
                       Expanded(
                         child: ListView.builder(
+                          controller: _episodeScrollController,
+                          cacheExtent: 8000,
                           scrollDirection: Axis.horizontal,
                           itemCount: widget.drama.episodes.length,
                           itemBuilder: (context, index) {
                             final isCur = index == _currentIndex;
+                            final fNode = _episodeFocusNodes.putIfAbsent(index, () => FocusNode());
                             return Padding(
                               padding: const EdgeInsets.only(right: 12),
                               child: TvFocusable(
+                                focusNode: fNode,
                                 autofocus: isCur,
-                                onPressed: () => _jumpToEpisode(index),
+                                onKeyEvent: (node, event) {
+                                  if (event is KeyDownEvent) {
+                                    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                                        event.logicalKey == LogicalKeyboardKey.escape ||
+                                        event.logicalKey == LogicalKeyboardKey.goBack ||
+                                        event.logicalKey == LogicalKeyboardKey.gameButtonB) {
+                                      setState(() {
+                                        _showEpisodeDrawer = false;
+                                      });
+                                      return KeyEventResult.handled;
+                                    }
+                                  }
+                                  return KeyEventResult.ignored;
+                                },
+                                onPressed: () {
+                                  setState(() {
+                                    _showEpisodeDrawer = false;
+                                  });
+                                  _jumpToEpisode(index);
+                                },
                                 borderRadius: BorderRadius.circular(8),
                                 backgroundColor: isCur ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
                                 focusedBackgroundColor: isCur ? const Color(0xFFFF2D55) : const Color(0xFF334155),

@@ -72,6 +72,7 @@ class DramaItem {
   static String detectProvider({
     String? explicitProvider,
     String? providerKey,
+    String? categoryName,
     String? sourceType,
     String? watchUrl,
     List<String>? tags,
@@ -87,6 +88,18 @@ class DramaItem {
       final p = providerKey.trim().toLowerCase();
       if (p != 'local' && p != 'narto' && p != 'all') {
         return providerKey.trim();
+      }
+    }
+
+    if (categoryName != null && categoryName.trim().isNotEmpty) {
+      final cleanCat = categoryName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      for (final prov in knownProviders) {
+        if (cleanCat.contains(prov)) {
+          return prov;
+        }
+      }
+      if (cleanCat != 'local' && cleanCat != 'narto' && cleanCat != 'all' && cleanCat.isNotEmpty) {
+        return categoryName.trim();
       }
     }
 
@@ -111,7 +124,11 @@ class DramaItem {
     if (watchUrl != null && watchUrl.isNotEmpty) {
       final cleanUrl = watchUrl.toLowerCase();
       for (final prov in knownProviders) {
-        if (cleanUrl.contains('provider=$prov') || cleanUrl.contains('/$prov/')) {
+        if (cleanUrl.contains('provider=$prov') ||
+            cleanUrl.contains('/$prov/') ||
+            cleanUrl.contains('-$prov-') ||
+            cleanUrl.contains('$prov-stream') ||
+            cleanUrl.contains('asset.$prov')) {
           return prov;
         }
       }
@@ -119,12 +136,26 @@ class DramaItem {
 
     if (defaultProvider != null && defaultProvider.trim().isNotEmpty) {
       final dp = defaultProvider.trim().toLowerCase();
-      if (dp != 'all' && dp != 'narto') {
+      if (dp != 'all' && dp != 'narto' && dp != 'general' && dp != 'local') {
         return defaultProvider.trim();
       }
     }
 
-    return 'Narto';
+    return '';
+  }
+
+  String get displayProvider {
+    if (providerKey != null &&
+        providerKey!.trim().isNotEmpty &&
+        providerKey!.trim().toLowerCase() != 'narto' &&
+        providerKey!.trim().toLowerCase() != 'local') {
+      return providerKey!.trim().toUpperCase();
+    }
+    final detected = detectProvider(watchUrl: watchUrl, tags: tags);
+    if (detected.isNotEmpty && detected.toLowerCase() != 'narto' && detected.toLowerCase() != 'local') {
+      return detected.toUpperCase();
+    }
+    return '';
   }
 
   factory DramaItem.fromJson(Map<String, dynamic> json, {String? defaultProvider}) {
@@ -147,11 +178,13 @@ class DramaItem {
       urlVal = 'https://narto-drama.com$urlVal';
     }
 
-    final rawTags = json['tags'];
+    final rawTags = json['tags'] ?? json['tag_names'];
     List<String> tagsList = [];
     if (rawTags is List) {
       tagsList = rawTags.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
     }
+
+    final catVal = json['category_name']?.toString() ?? json['category']?.toString();
 
     final epCount = json['episode_count']?.toString() ??
         json['chapter_count']?.toString() ??
@@ -164,6 +197,7 @@ class DramaItem {
     final detectedProv = detectProvider(
       explicitProvider: json['provider']?.toString(),
       providerKey: json['provider_key']?.toString(),
+      categoryName: catVal,
       sourceType: json['source_type']?.toString(),
       watchUrl: urlVal,
       tags: tagsList,

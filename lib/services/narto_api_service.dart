@@ -159,6 +159,7 @@ class NartoApiService {
             posterUrl: poster,
             watchUrl: watchUrl,
             episodeCount: epText,
+            providerKey: DramaItem.detectProvider(watchUrl: watchUrl),
           ));
         }
 
