@@ -442,6 +442,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     });
     if (index >= 0 && index < _tabFocusNodes.length) {
       _tabFocusNodes[index].requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && index < _tabFocusNodes.length) {
+          _tabFocusNodes[index].requestFocus();
+        }
+      });
     }
     if (index == 1) {
       if (_providerDramas.isEmpty && !_isLoadingProviderDramas) {
@@ -627,7 +632,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         return;
       }
 
-      // If already on the navbar, show exit confirmation dialog
+      // If already on the navbar but not on Beranda (tab 0), return to Beranda
+      if (_selectedTabIndex != 0) {
+        _onTabChanged(0);
+        return;
+      }
+
+      // If already on Beranda tab in navbar, show exit confirmation dialog
       final shouldExit = await _showExitConfirmationDialog();
       if (shouldExit == true) {
         SystemNavigator.pop();

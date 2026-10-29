@@ -56,6 +56,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   final FocusNode _playPauseFocusNode = FocusNode();
   final FocusNode _seekBarFocusNode = FocusNode();
 
+  // Hold-to-exit states
+  Timer? _backHoldTimer;
+  Timer? _backHoldProgressTimer;
+  DateTime? _backHoldStartTime;
+  bool _isHoldingBack = false;
+  double _holdBackProgress = 0.0;
+  bool _showHoldHint = false;
+  Timer? _holdHintTimer;
+
   void _openEpisodeDrawer() {
     _hideControlsTimer?.cancel();
     setState(() {
@@ -91,7 +100,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   bool _onHardwareKey(KeyEvent event) {
     if (!mounted) return false;
-    if (event is! KeyDownEvent) return false;
     final res = _handleTvKeyEvent(_rootFocusNode, event);
     return res == KeyEventResult.handled;
   }
@@ -420,9 +428,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   }
 
   KeyEventResult _handleTvKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-
     final key = event.logicalKey;
+
+    final isBackKey = key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.gameButtonB;
+
+    if (isBackKey) {
+      if (event is KeyDownEvent) {
+        _onBackKeyDown();
+      } else if (event is KeyRepeatEvent) {
+        _onBackKeyRepeat();
+      } else if (event is KeyUpEvent) {
+        _onBackKeyUp();
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     // Handle Play/Pause
     if (key == LogicalKeyboardKey.mediaPlayPause ||
@@ -452,12 +475,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    // If Episode Drawer is open, let its focus tree handle arrows or dismiss on up/back
+    // If Episode Drawer is open, let its focus tree handle arrows or dismiss on up
     if (_showEpisodeDrawer) {
-      if (key == LogicalKeyboardKey.escape ||
-          key == LogicalKeyboardKey.arrowUp ||
-          key == LogicalKeyboardKey.goBack ||
-          key == LogicalKeyboardKey.gameButtonB) {
+      if (key == LogicalKeyboardKey.arrowUp) {
         setState(() {
           _showEpisodeDrawer = false;
         });
@@ -475,15 +495,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           _showControls = false;
         });
         _rootFocusNode.requestFocus();
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.escape ||
-          key == LogicalKeyboardKey.goBack ||
-          key == LogicalKeyboardKey.gameButtonB) {
-        _hideControlsTimer?.cancel();
-        setState(() {
-          _showControls = false;
-        });
         return KeyEventResult.handled;
       }
 
@@ -528,19 +539,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.gameButtonB) {
-      _handlePlayerBack();
-      return KeyEventResult.handled;
-    }
-
     return KeyEventResult.ignored;
   }
 
-  bool _isConfirmingExit = false;
-
-  Future<void> _handlePlayerBack() async {
+  void _onBackKeyDown() {
     if (_isConfirmingExit) return;
 
     if (_showEpisodeDrawer) {
@@ -548,11 +550,113 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _rootFocusNode.requestFocus();
       return;
     }
+
     if (_showControls) {
       _hideControlsTimer?.cancel();
       setState(() => _showControls = false);
       _rootFocusNode.requestFocus();
       return;
+    }
+
+    // Clean playback: require holding Back for 1 second (1000ms)
+    if (_backHoldStartTime == null) {
+      _backHoldStartTime = DateTime.now();
+      setState(() {
+        _isHoldingBack = true;
+        _holdBackProgress = 0.0;
+        _showHoldHint = false;
+      });
+      _holdHintTimer?.cancel();
+
+      _backHoldProgressTimer?.cancel();
+      _backHoldProgressTimer = Timer.periodic(const Duration(milliseconds: 30), (t) {
+        if (!mounted || _backHoldStartTime == null) {
+          t.cancel();
+          return;
+        }
+        final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
+        final progress = (elapsed / 1000.0).clamp(0.0, 1.0);
+        setState(() {
+          _holdBackProgress = progress;
+        });
+        if (elapsed >= 1000) {
+          t.cancel();
+          _triggerHoldExit();
+        }
+      });
+
+      _backHoldTimer?.cancel();
+      _backHoldTimer = Timer(const Duration(milliseconds: 1000), () {
+        _triggerHoldExit();
+      });
+    }
+  }
+
+  void _onBackKeyRepeat() {
+    if (_isHoldingBack && _backHoldStartTime != null) {
+      final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
+      if (elapsed >= 1000) {
+        _triggerHoldExit();
+      }
+    }
+  }
+
+  void _onBackKeyUp() {
+    if (_isHoldingBack) {
+      final elapsed = _backHoldStartTime != null
+          ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
+          : 0;
+      _cancelBackHold();
+      if (elapsed < 1000 && !_isConfirmingExit) {
+        _showHoldBackHint();
+      }
+    }
+  }
+
+  void _cancelBackHold() {
+    _backHoldTimer?.cancel();
+    _backHoldTimer = null;
+    _backHoldProgressTimer?.cancel();
+    _backHoldProgressTimer = null;
+    _backHoldStartTime = null;
+    if (_isHoldingBack) {
+      setState(() {
+        _isHoldingBack = false;
+        _holdBackProgress = 0.0;
+      });
+    }
+  }
+
+  void _showHoldBackHint() {
+    _holdHintTimer?.cancel();
+    setState(() {
+      _showHoldHint = true;
+    });
+    _holdHintTimer = Timer(const Duration(milliseconds: 2000), () {
+      if (mounted) {
+        setState(() {
+          _showHoldHint = false;
+        });
+      }
+    });
+  }
+
+  void _triggerHoldExit() {
+    _cancelBackHold();
+    _confirmExitPlayer();
+  }
+
+  bool _isConfirmingExit = false;
+
+  Future<void> _confirmExitPlayer() async {
+    if (_isConfirmingExit) return;
+
+    if (_showEpisodeDrawer) {
+      setState(() => _showEpisodeDrawer = false);
+    }
+    if (_showControls) {
+      _hideControlsTimer?.cancel();
+      setState(() => _showControls = false);
     }
 
     _isConfirmingExit = true;
@@ -874,6 +978,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _playPauseFocusNode.removeListener(_onFocusChanged);
     _hideControlsTimer?.cancel();
     _seekIndicatorTimer?.cancel();
+    _backHoldTimer?.cancel();
+    _backHoldProgressTimer?.cancel();
+    _holdHintTimer?.cancel();
     _activeSubtitleNotifier.dispose();
     _controller?.dispose();
     _controller = null;
@@ -901,7 +1008,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        _handlePlayerBack();
+        if (_showEpisodeDrawer) {
+          setState(() => _showEpisodeDrawer = false);
+          _rootFocusNode.requestFocus();
+          return;
+        }
+        if (_showControls) {
+          _hideControlsTimer?.cancel();
+          setState(() => _showControls = false);
+          _rootFocusNode.requestFocus();
+          return;
+        }
+        _showHoldBackHint();
       },
       child: Focus(
         focusNode: _rootFocusNode,
@@ -1049,7 +1167,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         child: Row(
                           children: [
                             TvFocusable(
-                              onPressed: _handlePlayerBack,
+                              onPressed: _confirmExitPlayer,
                               padding: const EdgeInsets.all(8),
                               backgroundColor: Colors.white12,
                               child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
@@ -1374,6 +1492,89 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               ),
                             );
                           },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Hold Back Progress Overlay (Top-Right Pill)
+            if (_isHoldingBack)
+              Positioned(
+                top: 40,
+                right: 40,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xE60F172A),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x66FF2D55),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          value: _holdBackProgress,
+                          strokeWidth: 3,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF2D55)),
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Text(
+                        'Tahan tombol Kembali untuk keluar...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Tap Back Hint Overlay (Top-Right Toast)
+            if (_showHoldHint && !_isHoldingBack && !_showControls && !_showEpisodeDrawer)
+              Positioned(
+                top: 40,
+                right: 40,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xE60F172A),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white24, width: 1),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black54,
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Color(0xFF38BDF8), size: 18),
+                      SizedBox(width: 10),
+                      Text(
+                        'Tahan tombol Kembali untuk keluar',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
