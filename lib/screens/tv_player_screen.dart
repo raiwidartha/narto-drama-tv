@@ -766,16 +766,45 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               builder: (context, val, child) {
                                 final pos = val.position;
                                 final dur = val.duration;
-                                final progress = dur.inMilliseconds > 0
-                                    ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+                                final durMs = dur.inMilliseconds;
+                                final progress = durMs > 0
+                                    ? (pos.inMilliseconds / durMs).clamp(0.0, 1.0)
+                                    : 0.0;
+                                final maxBufferedMs = val.buffered.isNotEmpty
+                                    ? val.buffered
+                                        .map((r) => r.end.inMilliseconds)
+                                        .fold(0, (max, e) => e > max ? e : max)
+                                    : 0;
+                                final bufferedProgress = durMs > 0
+                                    ? (maxBufferedMs / durMs).clamp(0.0, 1.0)
                                     : 0.0;
                                 return Column(
                                   children: [
-                                    LinearProgressIndicator(
-                                      value: progress,
-                                      backgroundColor: Colors.white24,
-                                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF2D55)),
-                                      minHeight: 6,
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(3),
+                                      child: SizedBox(
+                                        height: 6,
+                                        width: double.infinity,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            // 1. Background Track (Unbuffered)
+                                            Container(color: Colors.white24),
+                                            // 2. Downloaded / Cached Buffer Bar
+                                            FractionallySizedBox(
+                                              alignment: Alignment.centerLeft,
+                                              widthFactor: bufferedProgress,
+                                              child: Container(color: const Color(0x99FFFFFF)),
+                                            ),
+                                            // 3. Playback Position Bar
+                                            FractionallySizedBox(
+                                              alignment: Alignment.centerLeft,
+                                              widthFactor: progress,
+                                              child: Container(color: const Color(0xFFFF2D55)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(height: 8),
                                     Row(
