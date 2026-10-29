@@ -1356,6 +1356,29 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // --- TAB 5: PENGATURAN ---
+  Future<void> _applyAndSaveHost(String url, [BuildContext? dialogCtx, BuildContext? parentDialogCtx]) async {
+    final target = url.trim();
+    if (target.isEmpty) return;
+    await AppSettings.setBaseUrl(target);
+    if (dialogCtx != null && dialogCtx.mounted) {
+      Navigator.of(dialogCtx).pop(target);
+    }
+    if (parentDialogCtx != null && parentDialogCtx.mounted) {
+      Navigator.of(parentDialogCtx).pop(target);
+    }
+    if (mounted) {
+      setState(() {});
+      _loadHomeCatalog(reset: true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Host upstream berhasil disimpan: $target'),
+          backgroundColor: const Color(0xFF10B981),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   Future<String?> _showManualUrlInputDialog(BuildContext parentCtx, String initialUrl) {
     final controller = TextEditingController(text: initialUrl);
     final cancelFocus = FocusNode();
@@ -1363,6 +1386,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     return showDialog<String>(
       context: parentCtx,
+      barrierDismissible: false,
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: const Color(0xFF0F172A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1398,8 +1422,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   maxLines: 1,
                   style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'monospace'),
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (val) {
-                    Navigator.of(dialogCtx).pop(val.trim());
+                  onSubmitted: (val) async {
+                    await _applyAndSaveHost(val, dialogCtx, parentCtx);
                   },
                   decoration: InputDecoration(
                     hintText: 'https://...',
@@ -1443,12 +1467,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               }
               return KeyEventResult.ignored;
             },
-            onPressed: () => Navigator.of(dialogCtx).pop(controller.text.trim()),
+            onPressed: () async {
+              await _applyAndSaveHost(controller.text, dialogCtx, parentCtx);
+            },
             borderRadius: BorderRadius.circular(8),
             backgroundColor: const Color(0xFFFF2D55),
             focusedBackgroundColor: const Color(0xFFFF5377),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: const Text('Gunakan URL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text('Simpan & Terapkan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1470,6 +1496,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           preset1Focus.requestFocus();
@@ -1736,23 +1763,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     return KeyEventResult.ignored;
                   },
                   onPressed: () async {
-                    final target = currentTargetUrl.trim();
-                    if (target.isNotEmpty) {
-                      await AppSettings.setBaseUrl(target);
-                      if (ctx.mounted) {
-                        Navigator.of(ctx).pop();
-                      }
-                      if (mounted) {
-                        setState(() {});
-                        _loadHomeCatalog(reset: true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Host berhasil diubah ke: $target'),
-                            backgroundColor: const Color(0xFF10B981),
-                          ),
-                        );
-                      }
-                    }
+                    await _applyAndSaveHost(currentTargetUrl, ctx);
                   },
                   borderRadius: BorderRadius.circular(8),
                   backgroundColor: const Color(0xFFFF2D55),

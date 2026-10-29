@@ -1,3 +1,5 @@
+import '../services/app_settings.dart';
+
 class DramaItem {
   final String id;
   final String title;
@@ -169,13 +171,13 @@ class DramaItem {
         json['thumb']?.toString() ??
         '';
     if (posterVal.startsWith('/')) {
-      posterVal = 'https://narto-drama.com$posterVal';
+      posterVal = '${AppSettings.baseUrl}$posterVal';
     }
 
     // Watch URL normalization
     var urlVal = json['url']?.toString() ?? json['watch_url']?.toString() ?? '';
     if (urlVal.startsWith('/')) {
-      urlVal = 'https://narto-drama.com$urlVal';
+      urlVal = '${AppSettings.baseUrl}$urlVal';
     }
 
     final rawTags = json['tags'] ?? json['tag_names'];
