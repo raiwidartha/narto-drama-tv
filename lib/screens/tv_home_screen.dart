@@ -138,13 +138,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             _homePage++;
             _isLoadingHome = false;
           });
-          if (reset && _selectedTabIndex == 0) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _firstHomeFocusNode.canRequestFocus) {
-                _firstHomeFocusNode.requestFocus();
-              }
-            });
-          }
         }
       } else {
         final res = await NartoApiService.fetchProviderSections(
@@ -177,13 +170,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             _homePage++;
             _isLoadingHome = false;
           });
-          if (reset && _selectedTabIndex == 0) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _firstHomeFocusNode.canRequestFocus) {
-                _firstHomeFocusNode.requestFocus();
-              }
-            });
-          }
         }
       }
     } catch (e) {
@@ -526,14 +512,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     return result ?? false;
   }
 
+  DateTime _lastBackPressTime = DateTime.fromMillisecondsSinceEpoch(0);
   bool _isHandlingBack = false;
 
   Future<void> _handleBackPress() async {
+    final now = DateTime.now();
+    if (now.difference(_lastBackPressTime) < const Duration(milliseconds: 600)) {
+      return;
+    }
+    _lastBackPressTime = now;
+
     if (_isHandlingBack) return;
     _isHandlingBack = true;
     try {
       final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
       if (!isAnyTabFocused) {
+        // Return focus to the currently active tab in navbar
         if (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length) {
           _tabFocusNodes[_selectedTabIndex].requestFocus();
         } else {
@@ -542,16 +536,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         return;
       }
 
-      if (_selectedTabIndex != 0) {
-        _onTabChanged(0);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _tabFocusNodes[0].canRequestFocus) {
-            _tabFocusNodes[0].requestFocus();
-          }
-        });
-        return;
-      }
-
+      // If already on the navbar, show exit confirmation dialog
       final shouldExit = await _showExitConfirmationDialog();
       if (shouldExit == true) {
         SystemNavigator.pop();
@@ -569,30 +554,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         if (didPop) return;
         await _handleBackPress();
       },
-      child: Focus(
-        onKeyEvent: (node, event) {
-          if (event is KeyDownEvent &&
-              (event.logicalKey == LogicalKeyboardKey.goBack ||
-                  event.logicalKey == LogicalKeyboardKey.escape)) {
-            _handleBackPress();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: Scaffold(
-          backgroundColor: const Color(0xFF0F172A), // Slate 900
-          body: SafeArea(
-            child: Column(
-              children: [
-                // Top Navigation & Header Bar
-                _buildTopBar(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A), // Slate 900
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top Navigation & Header Bar
+              _buildTopBar(),
 
-                // Main View
-                Expanded(
-                  child: _buildCurrentTabContent(),
-                ),
-              ],
-            ),
+              // Main View
+              Expanded(
+                child: _buildCurrentTabContent(),
+              ),
+            ],
           ),
         ),
       ),
@@ -673,7 +647,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       autofocus: index == 0,
                       onPressed: () {
                         if (_selectedTabIndex == index) {
-                          if (index == 4) {
+                          if (index == 0) {
+                            if (_firstProviderChipFocusNode.canRequestFocus) {
+                              _firstProviderChipFocusNode.requestFocus();
+                            } else {
+                              _firstHomeFocusNode.requestFocus();
+                            }
+                          } else if (index == 1) {
+                            _firstProviderFocusNode.requestFocus();
+                          } else if (index == 2) {
+                            _firstHistoryFocusNode.requestFocus();
+                          } else if (index == 3) {
+                            _firstBookmarkFocusNode.requestFocus();
+                          } else if (index == 4) {
                             _searchInputFocusNode.requestFocus();
                             _openTvSearchDialog();
                           } else if (index == 5) {
@@ -684,34 +670,49 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         }
                       },
                       onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                          if (index == 0) {
-                            if (_firstProviderChipFocusNode.canRequestFocus) {
-                              _firstProviderChipFocusNode.requestFocus();
-                            } else {
-                              _firstHomeFocusNode.requestFocus();
+                        if (event is KeyDownEvent) {
+                          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                            if (index < _tabFocusNodes.length - 1) {
+                              _tabFocusNodes[index + 1].requestFocus();
+                              return KeyEventResult.handled;
                             }
-                            return KeyEventResult.handled;
-                          } else if (index == 1) {
-                            _firstProviderFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          } else if (index == 2) {
-                            _firstHistoryFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          } else if (index == 3) {
-                            _firstBookmarkFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          } else if (index == 4) {
-                            _searchInputFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          } else if (index == 5) {
-                            _settingsFirstFocusNode.requestFocus();
-                            _settingsScrollController.animateTo(
-                              0.0,
-                              duration: const Duration(milliseconds: 150),
-                              curve: Curves.easeOut,
-                            );
-                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                            if (index > 0) {
+                              _tabFocusNodes[index - 1].requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                            if (_selectedTabIndex != index) {
+                              _onTabChanged(index);
+                            }
+                            if (index == 0) {
+                              if (_firstProviderChipFocusNode.canRequestFocus) {
+                                _firstProviderChipFocusNode.requestFocus();
+                              } else {
+                                _firstHomeFocusNode.requestFocus();
+                              }
+                              return KeyEventResult.handled;
+                            } else if (index == 1) {
+                              _firstProviderFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            } else if (index == 2) {
+                              _firstHistoryFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            } else if (index == 3) {
+                              _firstBookmarkFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            } else if (index == 4) {
+                              _searchInputFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            } else if (index == 5) {
+                              _settingsFirstFocusNode.requestFocus();
+                              _settingsScrollController.animateTo(
+                                0.0,
+                                duration: const Duration(milliseconds: 150),
+                                curve: Curves.easeOut,
+                              );
+                              return KeyEventResult.handled;
+                            }
                           }
                         }
                         return KeyEventResult.ignored;

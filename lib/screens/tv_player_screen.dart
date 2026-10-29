@@ -530,80 +530,23 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.gameButtonB) {
-      _confirmExitPlayer().then((shouldExit) {
-        if (shouldExit && mounted) {
-          Navigator.of(context).pop();
-        }
-      });
+      if (_showEpisodeDrawer) {
+        setState(() => _showEpisodeDrawer = false);
+        _rootFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (_showControls) {
+        _hideControlsTimer?.cancel();
+        setState(() => _showControls = false);
+        _rootFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      // Controls already hidden: exit player immediately without showing center controls
+      Navigator.of(context).pop();
       return KeyEventResult.handled;
     }
 
     return KeyEventResult.ignored;
-  }
-
-  Future<bool> _confirmExitPlayer() async {
-    _hideControlsTimer?.cancel();
-    final wasPlaying = _controller?.value.isPlaying ?? false;
-    if (wasPlaying) {
-      await _controller?.pause();
-    }
-
-    if (!mounted) return true;
-
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.arrow_back_rounded, color: Color(0xFFFF2D55), size: 28),
-              SizedBox(width: 12),
-              Text(
-                'Keluar Menonton?',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          content: Text(
-            'Apakah Anda ingin berhenti menonton ${widget.drama.title}?',
-            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-          ),
-          actions: [
-            TvFocusable(
-              autofocus: true,
-              onPressed: () => Navigator.of(ctx).pop(false),
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFF334155),
-              focusedBackgroundColor: const Color(0xFF475569),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: const Text('Lanjut Nonton', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 12),
-            TvFocusable(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFFFF2D55),
-              focusedBackgroundColor: const Color(0xFFFF5377),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-              child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (result == true) {
-      return true;
-    } else {
-      if (wasPlaying) {
-        _controller?.play();
-      }
-      _showHudTemporarily();
-      return false;
-    }
   }
 
   void _showSynopsisModal() {
@@ -876,21 +819,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (_showEpisodeDrawer) {
           setState(() => _showEpisodeDrawer = false);
+          _rootFocusNode.requestFocus();
           return;
         }
         if (_showControls) {
+          _hideControlsTimer?.cancel();
           setState(() => _showControls = false);
+          _rootFocusNode.requestFocus();
           return;
         }
-        final nav = Navigator.of(context);
-        final shouldExit = await _confirmExitPlayer();
-        if (shouldExit && mounted) {
-          nav.pop();
-        }
+        Navigator.of(context).pop();
       },
       child: Focus(
         focusNode: _rootFocusNode,
@@ -1038,13 +980,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         child: Row(
                           children: [
                             TvFocusable(
-                              onPressed: () async {
-                                final nav = Navigator.of(context);
-                                final shouldExit = await _confirmExitPlayer();
-                                if (shouldExit && mounted) {
-                                  nav.pop();
-                                }
-                              },
+                              onPressed: () => Navigator.of(context).pop(),
                               padding: const EdgeInsets.all(8),
                               backgroundColor: Colors.white12,
                               child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
