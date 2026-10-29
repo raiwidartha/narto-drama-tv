@@ -24,7 +24,6 @@ void main() {
       'url': '/detail/watch/my-secretary-who-once-was-my-wife?lang=id-ID&from=search',
     };
     final drama = DramaItem.fromJson(itemJson);
-    print('DRAMA PROVIDER KEY: ${drama.providerKey}');
     expect(drama.providerKey, equals('vigloo'));
   });
 
