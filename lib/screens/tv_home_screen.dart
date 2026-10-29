@@ -40,10 +40,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   List<DramaItem> _searchResults = [];
   bool _isSearching = false;
   String _searchError = '';
+  final List<FocusNode> _tabFocusNodes = List.generate(6, (_) => FocusNode());
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tabFocusNodes.isNotEmpty) {
+        _tabFocusNodes[0].requestFocus();
+      }
+    });
     _initApp();
   }
 
@@ -199,6 +205,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     setState(() {
       _selectedTabIndex = index;
     });
+    if (index >= 0 && index < _tabFocusNodes.length) {
+      _tabFocusNodes[index].requestFocus();
+    }
     if (index == 2) {
       _loadHistory();
     } else if (index == 3) {
@@ -255,6 +264,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   @override
   void dispose() {
+    for (final node in _tabFocusNodes) {
+      node.dispose();
+    }
     _searchController.dispose();
     super.dispose();
   }
@@ -410,6 +422,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: TvFocusable(
+                      focusNode: index < _tabFocusNodes.length ? _tabFocusNodes[index] : null,
+                      autofocus: index == 0,
                       onPressed: () => _onTabChanged(index),
                       borderRadius: BorderRadius.circular(8),
                       backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
@@ -877,50 +891,242 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // --- TAB 4: CARI ---
+  void _openTvSearchDialog() {
+    final dialogController = TextEditingController(text: _searchController.text);
+    final focusNode = FocusNode();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          focusNode.requestFocus();
+        });
+
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.search_rounded, color: Color(0xFFFF2D55), size: 24),
+              SizedBox(width: 10),
+              Text(
+                'Ketik Judul Drama',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
+                  ),
+                  child: TextField(
+                    controller: dialogController,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: const InputDecoration(
+                      hintText: 'Masukkan judul drama...',
+                      hintStyle: TextStyle(color: Colors.white38, fontSize: 14),
+                      border: InputBorder.none,
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (val) {
+                      Navigator.of(ctx).pop();
+                      _searchController.text = val;
+                      _performSearch(val);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Ketik dengan keyboard virtual remote TV, lalu tekan Cari / Submit.',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TvFocusable(
+              onPressed: () => Navigator.of(ctx).pop(),
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFF1E293B),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              child: const Text('Batal', style: TextStyle(color: Colors.white70)),
+            ),
+            TvFocusable(
+              onPressed: () {
+                final query = dialogController.text.trim();
+                Navigator.of(ctx).pop();
+                _searchController.text = query;
+                _performSearch(query);
+              },
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFFFF2D55),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: const Text('Cari Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSearchTab() {
+    final queryText = _searchController.text.trim();
+    final quickKeywords = [
+      'CEO',
+      'Cinta',
+      'Menantu',
+      'Balas Dendam',
+      'Presiden',
+      'Pernikahan',
+      'Miliarder',
+      'Dokter',
+      'Keluarga',
+    ];
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Search Input Bar
+          // Search Input Bar (Focusable D-Pad Card)
           Row(
             children: [
               Expanded(
-                child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: const InputDecoration(
-                      hintText: 'Ketik judul drama (misal: CEO, Cinta, Menantu)...',
-                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
-                      border: InputBorder.none,
-                    ),
-                    onSubmitted: _performSearch,
+                child: TvFocusable(
+                  autofocus: true,
+                  onPressed: _openTvSearchDialog,
+                  borderRadius: BorderRadius.circular(10),
+                  backgroundColor: const Color(0xFF1E293B),
+                  focusedBackgroundColor: const Color(0xFF334155),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search_rounded, color: Color(0xFFFF2D55), size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          queryText.isNotEmpty ? queryText : 'Tekan OK di sini untuk mengetik judul drama...',
+                          style: TextStyle(
+                            color: queryText.isNotEmpty ? Colors.white : Colors.white38,
+                            fontSize: 14,
+                            fontWeight: queryText.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (queryText.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white12,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('Ubah', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                        ),
+                    ],
                   ),
                 ),
               ),
               const SizedBox(width: 12),
+              if (queryText.isNotEmpty) ...[
+                TvFocusable(
+                  onPressed: () {
+                    setState(() {
+                      _searchController.clear();
+                      _searchResults = [];
+                      _searchError = '';
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  backgroundColor: const Color(0xFF1E293B),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
+                      SizedBox(width: 6),
+                      Text('Hapus', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               TvFocusable(
-                onPressed: () => _performSearch(_searchController.text),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                onPressed: () {
+                  if (_searchController.text.trim().isNotEmpty) {
+                    _performSearch(_searchController.text);
+                  } else {
+                    _openTvSearchDialog();
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
                 backgroundColor: const Color(0xFFFF2D55),
+                focusedBackgroundColor: const Color(0xFFFF5377),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 child: const Row(
                   children: [
                     Icon(Icons.search_rounded, color: Colors.white, size: 18),
-                    SizedBox(width: 6),
+                    SizedBox(width: 8),
                     Text('Cari', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                   ],
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+
+          // Quick Keywords Row (D-Pad remote friendly)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.bolt_rounded, color: Color(0xFFFBBF24), size: 16),
+                    SizedBox(width: 4),
+                    Text('Saran Cepat: ', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                ...quickKeywords.map((kw) {
+                  final isCurrent = queryText.toLowerCase() == kw.toLowerCase();
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TvFocusable(
+                      onPressed: () {
+                        setState(() {
+                          _searchController.text = kw;
+                        });
+                        _performSearch(kw);
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      backgroundColor: isCurrent ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
+                      focusedBackgroundColor: isCurrent ? const Color(0xFFFF2D55) : const Color(0xFF334155),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Text(
+                        kw,
+                        style: TextStyle(
+                          color: isCurrent ? Colors.white : Colors.white70,
+                          fontSize: 11,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -940,10 +1146,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 : _searchError.isNotEmpty
                     ? Center(child: Text(_searchError, style: const TextStyle(color: Colors.white70)))
                     : _searchResults.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Gunakan kolom pencarian di atas untuk menemukan drama.',
-                              style: TextStyle(color: Colors.white38, fontSize: 14),
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.search_rounded, size: 48, color: Colors.white.withValues(alpha: 0.15)),
+                                const SizedBox(height: 12),
+                                Text(
+                                  queryText.isNotEmpty
+                                      ? 'Tidak ada hasil untuk "$queryText"'
+                                      : 'Pilih kolom di atas atau tekan saran kata kunci untuk mencari drama.',
+                                  style: const TextStyle(color: Colors.white38, fontSize: 13),
+                                ),
+                              ],
                             ),
                           )
                         : GridView.builder(

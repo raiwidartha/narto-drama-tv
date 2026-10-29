@@ -158,24 +158,75 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
     );
   }
 
+  void _showFullSynopsisModal(String title, String synopsis) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.description_outlined, color: Color(0xFFFF2D55), size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 580,
+            child: SingleChildScrollView(
+              child: Text(
+                synopsis.trim().isNotEmpty ? synopsis : 'Tidak ada sinopsis tersedia untuk drama ini.',
+                style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 14, height: 1.6),
+              ),
+            ),
+          ),
+          actions: [
+            TvFocusable(
+              autofocus: true,
+              onPressed: () => Navigator.of(ctx).pop(),
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFFFF2D55),
+              focusedBackgroundColor: const Color(0xFFFF5377),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildWidescreenDetail() {
     final detail = _detail;
     final title = detail?.title ?? widget.drama.title;
     final poster = (detail?.posterUrl.isNotEmpty ?? false) ? detail!.posterUrl : widget.drama.posterUrl;
-    final synopsis = detail?.description ?? widget.drama.description ?? 'Tidak ada sinopsis tersedia.';
+    final synopsis = (detail?.description != null && detail!.description!.trim().isNotEmpty)
+        ? detail.description!
+        : (widget.drama.description != null && widget.drama.description!.trim().isNotEmpty)
+            ? widget.drama.description!
+            : 'Tidak ada sinopsis tersedia untuk drama ini.';
     final episodes = detail?.episodes ?? [];
     final targetEpIndex = _lastWatchedEpIndex ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 28, 36, 28),
+      padding: const EdgeInsets.fromLTRB(36, 24, 36, 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left Column: Poster & Metadata (320px)
+          // Left Column: Poster & Actions (280px)
           SizedBox(
-            width: 320,
+            width: 280,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // Back Button + Header Row
                 Row(
@@ -200,7 +251,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Poster Image
                 ClipRRect(
@@ -221,54 +272,6 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
-
-                // Title
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    height: 1.25,
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Badge tags
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF2D55).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFFFF2D55), width: 0.8),
-                      ),
-                      child: Text(
-                        '${episodes.length} EPISODE',
-                        style: const TextStyle(color: Color(0xFFFF2D55), fontSize: 10, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    if (_lastWatchedEpIndex != null) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFF10B981), width: 0.8),
-                        ),
-                        child: Text(
-                          'LANJUT EP ${_lastWatchedEpIndex! + 1}',
-                          style: const TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
                 const SizedBox(height: 16),
 
@@ -319,38 +322,106 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-
-                // Synopsis Text
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        synopsis,
-                        style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 12,
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
-          const SizedBox(width: 36),
+          const SizedBox(width: 32),
 
-          // Right Column: Episode Grid (Flexible)
+          // Right Column: Title, Synopsis & Episode Grid
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Title
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Badge tags
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF2D55).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFFFF2D55), width: 0.8),
+                      ),
+                      child: Text(
+                        '${episodes.length} EPISODE',
+                        style: const TextStyle(color: Color(0xFFFF2D55), fontSize: 11, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    if (_lastWatchedEpIndex != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                        ),
+                        child: Text(
+                          'LANJUT EP ${_lastWatchedEpIndex! + 1}',
+                          style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Prominent Synopsis Card (TV Remote Focusable & Clickable)
+                TvFocusable(
+                  onPressed: () => _showFullSynopsisModal(title, synopsis),
+                  borderRadius: BorderRadius.circular(10),
+                  backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.7),
+                  focusedBackgroundColor: const Color(0xFF334155),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.description_outlined, color: Color(0xFFFF2D55), size: 16),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Sinopsis Cerita',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Tekan OK untuk baca lengkap',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        synopsis,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFCBD5E1),
+                          fontSize: 13,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Header Daftar Episode
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -358,7 +429,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                       'Daftar Episode',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -371,7 +442,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
 
                 // Grid of episodes
                 Expanded(
@@ -413,12 +484,12 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                                     if (isWatched && !isCurrent)
                                       const Padding(
                                         padding: EdgeInsets.only(right: 4),
-                                        child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 14),
+                                        child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 12),
                                       ),
                                     Text(
-                                      'Ep ${index + 1}',
+                                      'EP ${index + 1}',
                                       style: TextStyle(
-                                        color: Colors.white,
+                                        color: isCurrent || isWatched ? Colors.white : Colors.white70,
                                         fontWeight: isCurrent ? FontWeight.w900 : FontWeight.w600,
                                         fontSize: 13,
                                       ),
