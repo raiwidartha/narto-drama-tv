@@ -27,10 +27,10 @@ class AppSettings {
 
   static final List<ProviderInfo> _allProviders = [];
 
-  // Subtitle preferences (TV default: center & besar 26sp, tebal, sans-serif)
+  // Subtitle preferences (TV default: center & sedang 24sp, tebal, sans-serif)
   static String _subtitlePosition = 'center'; // 'bottom', 'middle_bottom', 'center', 'middle_top', 'top', 'custom'
   static double _subtitleVerticalOffset = 0.50; // 0.05 (top) to 0.95 (bottom), default 0.50 (center)
-  static double _subtitleFontSize = 26.0; // 18.0, 22.0, 26.0 (TV default), 32.0
+  static double _subtitleFontSize = 24.0; // 18.0 (kecil), 24.0 (sedang - default), 28.0 (besar), 34.0 (sangat besar)
   static int _subtitleFontColor = 0xFFFFFFFF; // White, Yellow, Cyan, Green
   static String _subtitleFontWeight = 'bold'; // 'normal', 'medium', 'bold', 'black'
   static String _subtitleFontFamily = 'sans-serif'; // 'sans-serif', 'serif', 'monospace', 'sans-serif-condensed'
@@ -40,6 +40,7 @@ class AppSettings {
 
   static String get baseUrl => _currentBaseUrl;
   static bool get isCustomHost => _currentBaseUrl != defaultBaseUrl;
+  static bool get isCustomBaseUrl => isCustomHost;
   static bool get isProxyMode => !_currentBaseUrl.contains('narto-drama.com');
   static String? get customCookie => _customCookie;
   static List<ProviderInfo> get allProviders => List.unmodifiable(_allProviders);
@@ -113,7 +114,7 @@ class AppSettings {
           _subtitleVerticalOffset = 0.50;
       }
     }
-    _subtitleFontSize = prefs.getDouble(keySubtitleFontSize) ?? 21.0;
+    _subtitleFontSize = prefs.getDouble(keySubtitleFontSize) ?? 24.0;
     _subtitleFontColor = prefs.getInt(keySubtitleFontColor) ?? 0xFFFFFFFF;
     _subtitleFontWeight = prefs.getString(keySubtitleFontWeight) ?? 'bold';
     _subtitleFontFamily = prefs.getString(keySubtitleFontFamily) ?? 'sans-serif';

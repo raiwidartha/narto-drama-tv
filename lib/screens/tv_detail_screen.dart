@@ -64,8 +64,13 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
             _errorMessage = 'Gagal memuat detail drama dari server';
           });
         } else {
+          final mergedDetail = detail.copyWith(
+            description: (detail.description != null && detail.description!.trim().isNotEmpty)
+                ? detail.description
+                : widget.drama.description,
+          );
           setState(() {
-            _detail = detail;
+            _detail = mergedDetail;
             _isLoading = false;
           });
         }

@@ -451,23 +451,43 @@ class NartoApiService {
         poster = 'https://narto-drama.com$poster';
       }
 
-      // Extract synopsis / description: First prioritize full un-truncated DOM intro element
+      // Extract synopsis / description: First prioritize DOM synopsis element or strong tag
       String? description;
-      final introMatch = RegExp(
-        r'<(?:div|p)[^>]*class=["\x27][^"\x27]*(?:desktop-intro|info-intro)[^"\x27]*["\x27][^>]*>([\s\S]*?)</(?:div|p)>',
+      final strongSinopsisMatch = RegExp(
+        r'<strong>\s*(?:Sinopsis|Deskripsi)[^<]*</strong>\s*([\s\S]*?)</(?:p|div)>',
         caseSensitive: false,
       ).firstMatch(html);
-      if (introMatch != null) {
-        var rawIntro = introMatch.group(1)?.replaceAll(RegExp(r'<[^>]*>'), ' ').trim() ?? '';
-        rawIntro = rawIntro
+      if (strongSinopsisMatch != null) {
+        var rawSinopsis = strongSinopsisMatch.group(1)?.replaceAll(RegExp(r'<[^>]*>'), ' ').trim() ?? '';
+        rawSinopsis = rawSinopsis
             .replaceAll('&quot;', '"')
             .replaceAll('&amp;', '&')
             .replaceAll('&lt;', '<')
             .replaceAll('&gt;', '>')
             .replaceAll('&apos;', "'")
             .replaceAll('&#39;', "'");
-        if (rawIntro.isNotEmpty) {
-          description = rawIntro;
+        if (rawSinopsis.isNotEmpty) {
+          description = rawSinopsis;
+        }
+      }
+
+      if (description == null || description.isEmpty) {
+        final introMatch = RegExp(
+          r'<(?:div|p)[^>]*class=["\x27][^"\x27]*(?:desktop-intro|info-intro|synopsis|description)[^"\x27]*["\x27][^>]*>([\s\S]*?)</(?:div|p)>',
+          caseSensitive: false,
+        ).firstMatch(html);
+        if (introMatch != null) {
+          var rawIntro = introMatch.group(1)?.replaceAll(RegExp(r'<[^>]*>'), ' ').trim() ?? '';
+          rawIntro = rawIntro
+              .replaceAll('&quot;', '"')
+              .replaceAll('&amp;', '&')
+              .replaceAll('&lt;', '<')
+              .replaceAll('&gt;', '>')
+              .replaceAll('&apos;', "'")
+              .replaceAll('&#39;', "'");
+          if (rawIntro.isNotEmpty) {
+            description = rawIntro;
+          }
         }
       }
 
@@ -494,6 +514,7 @@ class NartoApiService {
         if (ogDescMatch != null) {
           var rawDesc = ogDescMatch.group(1)?.trim() ?? '';
           rawDesc = rawDesc.replaceAll(RegExp(r'\.?\s*Narto\s+Drama.*$', caseSensitive: false), '').trim();
+          rawDesc = rawDesc.replaceAll(RegExp(r'^.*?\bEpisode\s+\d+/\d+\s*[-—:]\s*', caseSensitive: false), '').trim();
           rawDesc = rawDesc
               .replaceAll('&quot;', '"')
               .replaceAll('&amp;', '&')

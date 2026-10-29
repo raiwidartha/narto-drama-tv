@@ -49,6 +49,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   // TV focus node for root key interception
   final FocusNode _rootFocusNode = FocusNode();
   final FocusNode _playPauseFocusNode = FocusNode();
+  final FocusNode _seekBarFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -417,13 +418,32 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         });
         return KeyEventResult.handled;
       }
-      if (key == LogicalKeyboardKey.arrowDown) {
-        // Toggle down to Episode Drawer
-        setState(() {
-          _showControls = false;
-          _showEpisodeDrawer = true;
-        });
-        return KeyEventResult.handled;
+
+      // Check if seek bar is focused
+      if (_seekBarFocusNode.hasFocus) {
+        if (key == LogicalKeyboardKey.arrowDown) {
+          // Down FROM seek bar opens Episode Drawer
+          setState(() {
+            _showControls = false;
+            _showEpisodeDrawer = true;
+          });
+          return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.arrowUp) {
+          _playPauseFocusNode.requestFocus();
+          return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.arrowLeft) {
+          _seekBy(-10);
+          return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.arrowRight) {
+          _seekBy(10);
+          return KeyEventResult.handled;
+        }
+      } else {
+        // If center controls has focus and user presses arrowDown, transfer focus to seek bar
+        if (key == LogicalKeyboardKey.arrowDown) {
+          _seekBarFocusNode.requestFocus();
+          return KeyEventResult.handled;
+        }
       }
       return KeyEventResult.ignored;
     }
@@ -454,9 +474,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      setState(() {
-        _showEpisodeDrawer = true;
-      });
+      _showHudTemporarily(persistent: true);
+      _seekBarFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
 
@@ -466,6 +485,240 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     return KeyEventResult.ignored;
+  }
+
+  void _showSynopsisModal() {
+    _hideControlsTimer?.cancel();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final desc = widget.drama.description;
+        final hasDesc = desc != null && desc.trim().isNotEmpty;
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.movie_rounded, color: Color(0xFFFF2D55), size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.drama.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${widget.drama.providerName?.toUpperCase() ?? "NARTO"} • Total ${widget.drama.episodes.length} Episode',
+                      style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 580,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Text(
+                hasDesc ? desc.trim() : 'Sinopsis belum tersedia untuk drama ini.',
+                style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 15, height: 1.5),
+              ),
+            ),
+          ),
+          actions: [
+            TvFocusable(
+              autofocus: true,
+              onPressed: () => Navigator.of(ctx).pop(),
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFFFF2D55),
+              focusedBackgroundColor: const Color(0xFFFF5377),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showQuickSubtitleModal() {
+    _hideControlsTimer?.cancel();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.tune_rounded, color: Color(0xFF38BDF8), size: 26),
+                  SizedBox(width: 10),
+                  Text('Pengaturan Cepat Takarir (Subtitle)', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SizedBox(
+                width: 580,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Subtitle Toggle
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Tampilkan Subtitle', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                        TvFocusable(
+                          autofocus: true,
+                          onPressed: () {
+                            setState(() => _subtitlesEnabled = !_subtitlesEnabled);
+                            setDialogState(() {});
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          backgroundColor: _subtitlesEnabled ? const Color(0xFF10B981) : const Color(0xFF475569),
+                          child: Text(_subtitlesEnabled ? 'AKTIF' : 'NONAKTIF', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+
+                    // Vertical Position Nudge Stepper
+                    const Text('Atur Posisi Vertikal (Nudge Naik / Turun):', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF38BDF8)),
+                          ),
+                          child: Text(
+                            '${(AppSettings.subtitleVerticalOffset * 100).toInt()}% dari atas',
+                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const Spacer(),
+                        TvFocusable(
+                          onPressed: () async {
+                            final cur = AppSettings.subtitleVerticalOffset;
+                            await AppSettings.setSubtitleVerticalOffset(cur - 0.05);
+                            setState(() {});
+                            setDialogState(() {});
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          backgroundColor: const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFF38BDF8),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text('Naik 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () async {
+                            final cur = AppSettings.subtitleVerticalOffset;
+                            await AppSettings.setSubtitleVerticalOffset(cur + 0.05);
+                            setState(() {});
+                            setDialogState(() {});
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          backgroundColor: const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFF38BDF8),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text('Turun 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () async {
+                            await AppSettings.setSubtitleVerticalOffset(0.50);
+                            setState(() {});
+                            setDialogState(() {});
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          backgroundColor: const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFFFF2D55),
+                          child: const Text('50%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+
+                    // Font Size Options
+                    const Text('Ukuran Font Subtitle:', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _buildSubSizeChip('Kecil (18sp)', 18.0, setDialogState),
+                        const SizedBox(width: 8),
+                        _buildSubSizeChip('Sedang (24sp)', 24.0, setDialogState),
+                        const SizedBox(width: 8),
+                        _buildSubSizeChip('Besar (28sp)', 28.0, setDialogState),
+                        const SizedBox(width: 8),
+                        _buildSubSizeChip('Sangat Besar (34sp)', 34.0, setDialogState),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TvFocusable(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: const Color(0xFFFF2D55),
+                  focusedBackgroundColor: const Color(0xFFFF5377),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                  child: const Text('Selesai', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSubSizeChip(String label, double size, StateSetter setDialogState) {
+    final isSelected = AppSettings.subtitleFontSize == size;
+    return TvFocusable(
+      onPressed: () async {
+        await AppSettings.setSubtitleFontSize(size);
+        setState(() {});
+        setDialogState(() {});
+      },
+      borderRadius: BorderRadius.circular(6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      backgroundColor: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
+      focusedBackgroundColor: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF475569),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 
   @override
@@ -478,6 +731,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _cachedVideoWidget = null;
     _rootFocusNode.dispose();
     _playPauseFocusNode.dispose();
+    _seekBarFocusNode.dispose();
     WakelockPlus.disable();
     super.dispose();
   }
@@ -635,7 +889,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Top Bar (Title & Episode Info)
+                      // Top Bar (Title & Episode Info & Synopsis)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(40, 24, 40, 0),
                         child: Row(
@@ -665,11 +919,27 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            TvFocusable(
+                              onPressed: _showSynopsisModal,
+                              borderRadius: BorderRadius.circular(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              backgroundColor: Colors.white12,
+                              focusedBackgroundColor: const Color(0xFF38BDF8),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.description_outlined, color: Colors.white, size: 16),
+                                  SizedBox(width: 6),
+                                  Text('Sinopsis', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
 
-                      // Center HUD Buttons (Prev, Play/Pause, Next)
+                      // Center HUD Buttons (Prev, Play/Pause, Next, Subtitle, Synopsis)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -684,7 +954,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               size: 32,
                             ),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 20),
 
                           // Rewind 10s
                           TvFocusable(
@@ -693,7 +963,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             backgroundColor: Colors.white12,
                             child: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 32),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 20),
 
                           // Play / Pause
                           ValueListenableBuilder<VideoPlayerValue>(
@@ -714,7 +984,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               );
                             },
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 20),
 
                           // Forward 10s
                           TvFocusable(
@@ -723,7 +993,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             backgroundColor: Colors.white12,
                             child: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 32),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 20),
 
                           // Next Episode
                           TvFocusable(
@@ -736,7 +1006,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               size: 32,
                             ),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 20),
 
                           // Subtitle Toggle
                           TvFocusable(
@@ -753,73 +1023,139 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               size: 32,
                             ),
                           ),
+                          const SizedBox(width: 14),
+
+                          // Quick Subtitle Settings (Offset & Font Size)
+                          TvFocusable(
+                            onPressed: _showQuickSubtitleModal,
+                            padding: const EdgeInsets.all(12),
+                            backgroundColor: Colors.white12,
+                            focusedBackgroundColor: const Color(0xFF38BDF8),
+                            child: const Icon(
+                              Icons.tune_rounded,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+
+                          // Synopsis Modal Button
+                          TvFocusable(
+                            onPressed: _showSynopsisModal,
+                            padding: const EdgeInsets.all(12),
+                            backgroundColor: Colors.white12,
+                            focusedBackgroundColor: const Color(0xFFFF2D55),
+                            child: const Icon(
+                              Icons.info_outline_rounded,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
                         ],
                       ),
 
-                      // Bottom Progress & Hint Bar
+                      // Bottom Progress & Focusable Seek Bar (Transit node between center & drawer)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(40, 0, 40, 24),
-                        child: Column(
-                          children: [
-                            ValueListenableBuilder<VideoPlayerValue>(
-                              valueListenable: _controller!,
-                              builder: (context, val, child) {
-                                final pos = val.position;
-                                final dur = val.duration;
-                                final durMs = dur.inMilliseconds;
-                                final progress = durMs > 0
-                                    ? (pos.inMilliseconds / durMs).clamp(0.0, 1.0)
-                                    : 0.0;
-                                final maxBufferedMs = val.buffered.isNotEmpty
-                                    ? val.buffered
-                                        .map((r) => r.end.inMilliseconds)
-                                        .fold(0, (max, e) => e > max ? e : max)
-                                    : 0;
-                                final bufferedProgress = durMs > 0
-                                    ? (maxBufferedMs / durMs).clamp(0.0, 1.0)
-                                    : 0.0;
-                                return Column(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(3),
-                                      child: SizedBox(
-                                        height: 6,
-                                        width: double.infinity,
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            // 1. Background Track (Unbuffered)
-                                            Container(color: Colors.white24),
-                                            // 2. Downloaded / Cached Buffer Bar
-                                            FractionallySizedBox(
-                                              alignment: Alignment.centerLeft,
-                                              widthFactor: bufferedProgress,
-                                              child: Container(color: const Color(0x99FFFFFF)),
+                        padding: const EdgeInsets.fromLTRB(40, 0, 40, 20),
+                        child: TvFocusable(
+                          focusNode: _seekBarFocusNode,
+                          onPressed: _togglePlayPause,
+                          borderRadius: BorderRadius.circular(10),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          backgroundColor: Colors.white.withValues(alpha: 0.05),
+                          focusedBackgroundColor: const Color(0xFF1E293B),
+                          focusBorderColor: const Color(0xFFFF2D55),
+                          child: ValueListenableBuilder<VideoPlayerValue>(
+                            valueListenable: _controller!,
+                            builder: (context, val, child) {
+                              final isBarFocused = _seekBarFocusNode.hasFocus;
+                              final pos = val.position;
+                              final dur = val.duration;
+                              final durMs = dur.inMilliseconds;
+                              final progress = durMs > 0
+                                  ? (pos.inMilliseconds / durMs).clamp(0.0, 1.0)
+                                  : 0.0;
+                              final maxBufferedMs = val.buffered.isNotEmpty
+                                  ? val.buffered
+                                      .map((r) => r.end.inMilliseconds)
+                                      .fold(0, (max, e) => e > max ? e : max)
+                                  : 0;
+                              final bufferedProgress = durMs > 0
+                                  ? (maxBufferedMs / durMs).clamp(0.0, 1.0)
+                                  : 0.0;
+                              return Column(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: SizedBox(
+                                      height: isBarFocused ? 10 : 6,
+                                      width: double.infinity,
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          // 1. Background Track (Unbuffered)
+                                          Container(color: Colors.white24),
+                                          // 2. Downloaded / Cached Buffer Bar
+                                          FractionallySizedBox(
+                                            alignment: Alignment.centerLeft,
+                                            widthFactor: bufferedProgress,
+                                            child: Container(color: const Color(0x99FFFFFF)),
+                                          ),
+                                          // 3. Playback Position Bar
+                                          FractionallySizedBox(
+                                            alignment: Alignment.centerLeft,
+                                            widthFactor: progress,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFF2D55),
+                                                boxShadow: isBarFocused
+                                                    ? [
+                                                        const BoxShadow(
+                                                          color: Color(0xFFFF2D55),
+                                                          blurRadius: 8,
+                                                          spreadRadius: 2,
+                                                        ),
+                                                      ]
+                                                    : null,
+                                              ),
                                             ),
-                                            // 3. Playback Position Bar
-                                            FractionallySizedBox(
-                                              alignment: Alignment.centerLeft,
-                                              widthFactor: progress,
-                                              child: Container(color: const Color(0xFFFF2D55)),
-                                            ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(_formatDuration(pos), style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                                        const Text('Tekan [Bawah] untuk Daftar Episode', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                                        Text(_formatDuration(dur), style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                                      ],
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _formatDuration(pos),
+                                        style: TextStyle(
+                                          color: isBarFocused ? const Color(0xFFFF2D55) : Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: isBarFocused ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                      Text(
+                                        isBarFocused
+                                            ? '◄ ► Geser 10s • [Tengah] Jeda • [Bawah] Daftar Episode'
+                                            : 'Tekan [Bawah] untuk Kontrol Garis Laju',
+                                        style: TextStyle(
+                                          color: isBarFocused ? const Color(0xFF38BDF8) : Colors.white38,
+                                          fontSize: 12,
+                                          fontWeight: isBarFocused ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatDuration(dur),
+                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ],

@@ -292,4 +292,26 @@ class DramaDetail {
     if (id.isNotEmpty && id != '0') return id;
     return DramaItem.cleanTitle(title).toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
   }
+
+  DramaDetail copyWith({
+    String? id,
+    int? movieId,
+    String? title,
+    String? posterUrl,
+    String? description,
+    String? providerName,
+    String? slug,
+    List<EpisodeItem>? episodes,
+  }) {
+    return DramaDetail(
+      id: id ?? this.id,
+      movieId: movieId ?? this.movieId,
+      title: title ?? this.title,
+      posterUrl: posterUrl ?? this.posterUrl,
+      description: description ?? this.description,
+      providerName: providerName ?? this.providerName,
+      slug: slug ?? this.slug,
+      episodes: episodes ?? this.episodes,
+    );
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/drama.dart';
 import '../models/provider_section.dart';
 import '../services/narto_api_service.dart';
@@ -149,7 +150,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (_isSyncingProviders) return;
     setState(() => _isSyncingProviders = true);
     try {
-      final res = await NartoApiService.fetchProviderSections(provider: 'general');
+      final res = await NartoApiService.fetchProviderSections(provider: 'melolo');
       final list = res['providers'] as List<ProviderInfo>?;
       if (list != null && list.isNotEmpty) {
         setState(() {
@@ -165,20 +166,29 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           );
         }
       } else {
-        setState(() => _isSyncingProviders = false);
+        setState(() {
+          _providers = AppSettings.allProviders;
+          _isSyncingProviders = false;
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tidak ada perubahan daftar provider dari server.')),
+            SnackBar(
+              content: Text('Daftar provider dimuat dari database: ${_providers.length} provider.'),
+              backgroundColor: const Color(0xFF10B981),
+            ),
           );
         }
       }
     } catch (e) {
-      setState(() => _isSyncingProviders = false);
+      setState(() {
+        _providers = AppSettings.allProviders;
+        _isSyncingProviders = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal sinkronisasi ($e)'),
-            backgroundColor: const Color(0xFFEF4444),
+            content: Text('Sinkronisasi memakai database lokal: ${_providers.length} provider.'),
+            backgroundColor: const Color(0xFF38BDF8),
           ),
         );
       }
@@ -249,21 +259,82 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Slate 900
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top Navigation & Header Bar
-            _buildTopBar(),
-
-            // Main View
-            Expanded(
-              child: _buildCurrentTabContent(),
+  Future<bool> _showExitConfirmationDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.power_settings_new_rounded, color: Color(0xFFFF2D55), size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Keluar dari Narto Drama TV?',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Apakah Anda yakin ingin menutup aplikasi Narto Drama TV?',
+            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+          ),
+          actions: [
+            TvFocusable(
+              autofocus: true,
+              onPressed: () => Navigator.of(ctx).pop(false),
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFF334155),
+              focusedBackgroundColor: const Color(0xFF475569),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              child: const Text('Batal / Tetap di Aplikasi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 12),
+            TvFocusable(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFFFF2D55),
+              focusedBackgroundColor: const Color(0xFFFF5377),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+              child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_selectedTabIndex != 0) {
+          _onTabChanged(0);
+          return;
+        }
+        final shouldExit = await _showExitConfirmationDialog();
+        if (shouldExit == true) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A), // Slate 900
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top Navigation & Header Bar
+              _buildTopBar(),
+
+              // Main View
+              Expanded(
+                child: _buildCurrentTabContent(),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -403,8 +474,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              _buildProviderChip('general', 'Semua Provider'),
-              ..._providers.take(12).map((p) => _buildProviderChip(p.key, p.label)),
+              _buildProviderChip('general', 'Semua Provider', count: 0),
+              ..._providers.take(16).map((p) => _buildProviderChip(p.key, p.label, count: p.dramaCount)),
               TvFocusable(
                 onPressed: () => _onTabChanged(1),
                 borderRadius: BorderRadius.circular(6),
@@ -495,25 +566,46 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
-  Widget _buildProviderChip(String key, String label) {
+  Widget _buildProviderChip(String key, String label, {int count = 0}) {
     final isSelected = _activeProvider == key;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: TvFocusable(
         onPressed: () => _selectProvider(key),
         borderRadius: BorderRadius.circular(6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         backgroundColor: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF1E293B),
         focusedBackgroundColor: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? const Color(0xFF0F172A) : Colors.white,
-              fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-              fontSize: 12,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                fontSize: 12,
+              ),
             ),
-          ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.black26 : const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF38BDF8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -595,17 +687,41 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              p.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    p.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                if (p.dramaCount > 0) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: isCurrent ? Colors.white24 : const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${p.dramaCount}',
+                                      style: TextStyle(
+                                        color: isCurrent ? Colors.white : const Color(0xFF38BDF8),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            if (p.dramaCount > 0)
-                              Text(
-                                '${p.dramaCount} drama',
-                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                              ),
+                            const SizedBox(height: 2),
+                            Text(
+                              p.dramaCount > 0 ? '${p.dramaCount} drama' : 'Katalog drama',
+                              style: TextStyle(color: isCurrent ? Colors.white70 : const Color(0xFF94A3B8), fontSize: 11),
+                            ),
                           ],
                         ),
                       ),
@@ -854,108 +970,511 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // --- TAB 5: PENGATURAN ---
+  void _showHostConfigDialog() {
+    final textController = TextEditingController(text: AppSettings.baseUrl);
+    bool isTesting = false;
+    String testResult = '';
+    bool? testSuccess;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.dns_rounded, color: Color(0xFF38BDF8), size: 26),
+                  SizedBox(width: 10),
+                  Text('Konfigurasi API Host Upstream', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SizedBox(
+                width: 560,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Pilih Preset Host:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        TvFocusable(
+                          onPressed: () {
+                            textController.text = 'https://narto-drama.com';
+                            setDialogState(() {
+                              testResult = '';
+                              testSuccess = null;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          backgroundColor: textController.text == 'https://narto-drama.com' ? const Color(0xFF0284C7) : const Color(0xFF334155),
+                          child: const Text('Resmi (narto-drama.com)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () {
+                            textController.text = 'https://narto-drama.vercel.app';
+                            setDialogState(() {
+                              testResult = '';
+                              testSuccess = null;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          backgroundColor: textController.text == 'https://narto-drama.vercel.app' ? const Color(0xFF0284C7) : const Color(0xFF334155),
+                          child: const Text('Mirror Edge Vercel', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('URL Endpoint Upstream:', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: textController,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFF0F172A),
+                        hintText: 'https://...',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        TvFocusable(
+                          onPressed: isTesting
+                              ? null
+                              : () async {
+                                  setDialogState(() {
+                                    isTesting = true;
+                                    testResult = 'Menguji respon host...';
+                                    testSuccess = null;
+                                  });
+                                  final res = await AppSettings.testConnection(textController.text);
+                                  setDialogState(() {
+                                    isTesting = false;
+                                    testSuccess = res['success'] == true;
+                                    testResult = res['message']?.toString() ?? '';
+                                  });
+                                },
+                          borderRadius: BorderRadius.circular(6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          backgroundColor: const Color(0xFF334155),
+                          focusedBackgroundColor: const Color(0xFF475569),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              isTesting
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.speed_rounded, color: Color(0xFF38BDF8), size: 16),
+                              const SizedBox(width: 6),
+                              const Text('Uji Latensi & Respon', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        if (testResult.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              testResult,
+                              style: TextStyle(
+                                color: testSuccess == true ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TvFocusable(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: const Color(0xFF334155),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: const Text('Batal', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 8),
+                TvFocusable(
+                  onPressed: () async {
+                    final target = textController.text.trim();
+                    if (target.isNotEmpty) {
+                      await AppSettings.setBaseUrl(target);
+                      if (ctx.mounted) {
+                        Navigator.of(ctx).pop();
+                      }
+                      if (mounted) {
+                        setState(() {});
+                        _loadHomeCatalog(reset: true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Host berhasil diubah ke: $target'),
+                            backgroundColor: const Color(0xFF10B981),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: const Color(0xFFFF2D55),
+                  focusedBackgroundColor: const Color(0xFFFF5377),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: const Text('Simpan & Terapkan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildSettingsTab() {
+    final isCustomHost = AppSettings.isCustomBaseUrl;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 20, 36, 28),
+      padding: const EdgeInsets.fromLTRB(36, 16, 36, 28),
       child: ListView(
         children: [
           const Text(
-            'Pengaturan Tampilan & Takarir (TV 10-Foot)',
+            'Pengaturan Narto Drama TV',
             style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+
+          // 1. API Host Configuration Card
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.dns_rounded, color: Color(0xFF38BDF8), size: 22),
+                    const SizedBox(width: 10),
+                    const Text('API Host Upstream', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isCustomHost ? const Color(0xFF0284C7).withValues(alpha: 0.2) : const Color(0xFF10B981).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981)),
+                      ),
+                      child: Text(
+                        isCustomHost ? 'Mirror Kustom' : 'Resmi Default',
+                        style: TextStyle(
+                          color: isCustomHost ? const Color(0xFF38BDF8) : const Color(0xFF10B981),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  AppSettings.baseUrl,
+                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontFamily: 'monospace'),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    TvFocusable(
+                      onPressed: _showHostConfigDialog,
+                      borderRadius: BorderRadius.circular(6),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      backgroundColor: const Color(0xFF0284C7),
+                      focusedBackgroundColor: const Color(0xFF38BDF8),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 8),
+                          Text('Ganti Host Upstream', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    if (isCustomHost) ...[
+                      const SizedBox(width: 12),
+                      TvFocusable(
+                        onPressed: () async {
+                          await AppSettings.resetToDefault();
+                          setState(() {});
+                          _loadHomeCatalog(reset: true);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Host dikembalikan ke upstream resmi (narto-drama.com)'),
+                                backgroundColor: Color(0xFF10B981),
+                              ),
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        backgroundColor: const Color(0xFF334155),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.restore_rounded, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text('Kembalikan ke Default', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // 2. Subtitle Live Preview Box
+          Container(
+            height: 90,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Stack(
+              children: [
+                const Positioned(
+                  left: 12,
+                  top: 8,
+                  child: Text(
+                    'Pratinjau Takarir Langsung (Live Preview)',
+                    style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppSettings.subtitleBgEnabled
+                          ? Color(AppSettings.subtitleBgColor).withValues(alpha: AppSettings.subtitleBgOpacity)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Tampilan takarir di layar TV Anda saat menonton drama',
+                      style: TextStyle(
+                        fontSize: AppSettings.subtitleFontSize * 0.8,
+                        color: Color(AppSettings.subtitleFontColor),
+                        fontWeight: AppSettings.effectiveFontWeight,
+                        fontFamily: AppSettings.effectiveFontFamily,
+                        shadows: [
+                          Shadow(
+                            offset: const Offset(1.5, 1.5),
+                            blurRadius: 4.0,
+                            color: Colors.black.withValues(alpha: 0.9),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
 
-          // Subtitle Font Size
+          // 3. Subtitle Font Size (Default: Sedang 24sp)
           _buildSettingSection(
             title: 'Ukuran Font Takarir (Subtitle)',
-            subtitle: 'Sesuaikan keterbacaan dari jarak sofa TV',
+            subtitle: 'Sesuaikan keterbacaan dari jarak sofa TV (Default: Sedang 24sp)',
             child: Row(
               children: [
                 _buildOptionChip(
-                  label: 'Sedang (22sp)',
-                  isSelected: AppSettings.subtitleFontSize == 22.0,
+                  label: 'Kecil (18sp)',
+                  isSelected: AppSettings.subtitleFontSize == 18.0,
                   onTap: () async {
-                    await AppSettings.setSubtitleFontSize(22.0);
+                    await AppSettings.setSubtitleFontSize(18.0);
                     setState(() {});
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _buildOptionChip(
-                  label: 'Standar TV (26sp)',
-                  isSelected: AppSettings.subtitleFontSize == 26.0,
+                  label: 'Sedang (24sp) • Default',
+                  isSelected: AppSettings.subtitleFontSize == 24.0,
                   onTap: () async {
-                    await AppSettings.setSubtitleFontSize(26.0);
+                    await AppSettings.setSubtitleFontSize(24.0);
                     setState(() {});
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _buildOptionChip(
-                  label: 'Besar (32sp)',
-                  isSelected: AppSettings.subtitleFontSize == 32.0,
+                  label: 'Besar (28sp)',
+                  isSelected: AppSettings.subtitleFontSize == 28.0,
                   onTap: () async {
-                    await AppSettings.setSubtitleFontSize(32.0);
+                    await AppSettings.setSubtitleFontSize(28.0);
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 10),
+                _buildOptionChip(
+                  label: 'Sangat Besar (34sp)',
+                  isSelected: AppSettings.subtitleFontSize == 34.0,
+                  onTap: () async {
+                    await AppSettings.setSubtitleFontSize(34.0);
                     setState(() {});
                   },
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // Subtitle Position
+          // 4. Subtitle Font Weight (Bold)
           _buildSettingSection(
-            title: 'Posisi Vertikal Takarir',
-            subtitle: 'Letak teks terjemahan pada video 9:16 vertikal',
+            title: 'Ketebalan Huruf (Font Weight)',
+            subtitle: 'Pilih ketebalan teks takarir agar lebih tegas di TV',
             child: Row(
               children: [
                 _buildOptionChip(
-                  label: 'Tengah Layar',
-                  isSelected: AppSettings.subtitlePosition == 'center',
+                  label: 'Normal (w400)',
+                  isSelected: AppSettings.subtitleFontWeight == 'normal',
                   onTap: () async {
-                    await AppSettings.setSubtitlePosition('center');
+                    await AppSettings.setSubtitleFontWeight('normal');
                     setState(() {});
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _buildOptionChip(
-                  label: 'Tengah Bawah',
-                  isSelected: AppSettings.subtitlePosition == 'middle_bottom',
+                  label: 'Sedang (w500)',
+                  isSelected: AppSettings.subtitleFontWeight == 'medium',
                   onTap: () async {
-                    await AppSettings.setSubtitlePosition('middle_bottom');
+                    await AppSettings.setSubtitleFontWeight('medium');
                     setState(() {});
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _buildOptionChip(
-                  label: 'Bawah Penuh',
-                  isSelected: AppSettings.subtitlePosition == 'bottom',
+                  label: 'Tebal (Bold) • Default',
+                  isSelected: AppSettings.subtitleFontWeight == 'bold',
                   onTap: () async {
-                    await AppSettings.setSubtitlePosition('bottom');
+                    await AppSettings.setSubtitleFontWeight('bold');
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 10),
+                _buildOptionChip(
+                  label: 'Sangat Tebal (Black)',
+                  isSelected: AppSettings.subtitleFontWeight == 'black',
+                  onTap: () async {
+                    await AppSettings.setSubtitleFontWeight('black');
                     setState(() {});
                   },
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // Subtitle Background Toggle
+          // 5. Subtitle Font Family
           _buildSettingSection(
-            title: 'Latar Belakang Takarir (Kontras Tinggi)',
-            subtitle: 'Kotak gelap di balik teks agar mudah dibaca di scene terang',
+            title: 'Jenis Huruf (Font Family)',
+            subtitle: 'Gaya tipografi teks takarir',
             child: Row(
               children: [
                 _buildOptionChip(
-                  label: 'Aktif (80% Hitam)',
-                  isSelected: AppSettings.subtitleBgEnabled,
+                  label: 'Sans-serif (Standar)',
+                  isSelected: AppSettings.subtitleFontFamily == 'sans-serif',
+                  onTap: () async {
+                    await AppSettings.setSubtitleFontFamily('sans-serif');
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 10),
+                _buildOptionChip(
+                  label: 'Monospace (Mesin Ketik)',
+                  isSelected: AppSettings.subtitleFontFamily == 'monospace',
+                  onTap: () async {
+                    await AppSettings.setSubtitleFontFamily('monospace');
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 10),
+                _buildOptionChip(
+                  label: 'Serif (Klasik)',
+                  isSelected: AppSettings.subtitleFontFamily == 'serif',
+                  onTap: () async {
+                    await AppSettings.setSubtitleFontFamily('serif');
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 6. Subtitle Color
+          _buildSettingSection(
+            title: 'Warna Teks Takarir',
+            subtitle: 'Pilih warna teks terjemahan yang nyaman di mata',
+            child: Row(
+              children: [
+                _buildColorChip('Putih', 0xFFFFFFFF),
+                const SizedBox(width: 10),
+                _buildColorChip('Kuning Terang', 0xFFFACC15),
+                const SizedBox(width: 10),
+                _buildColorChip('Hijau Neon', 0xFF4ADE80),
+                const SizedBox(width: 10),
+                _buildColorChip('Sian Biru', 0xFF38BDF8),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 7. Subtitle Background
+          _buildSettingSection(
+            title: 'Latar Belakang Takarir (Kontras Layar)',
+            subtitle: 'Kotak pelindung teks di belakang subtitle untuk keterbacaan tinggi',
+            child: Row(
+              children: [
+                _buildOptionChip(
+                  label: 'Hitam Transparan (80%)',
+                  isSelected: AppSettings.subtitleBgEnabled && AppSettings.subtitleBgOpacity < 0.9,
                   onTap: () async {
                     await AppSettings.setSubtitleBgEnabled(true);
+                    await AppSettings.setSubtitleBgOpacity(0.80);
                     setState(() {});
                   },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _buildOptionChip(
-                  label: 'Nonaktif (Teks Saja)',
+                  label: 'Hitam Pekat (100%)',
+                  isSelected: AppSettings.subtitleBgEnabled && AppSettings.subtitleBgOpacity >= 0.9,
+                  onTap: () async {
+                    await AppSettings.setSubtitleBgEnabled(true);
+                    await AppSettings.setSubtitleBgOpacity(1.0);
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 10),
+                _buildOptionChip(
+                  label: 'Bayangan Saja (Tanpa Kotak)',
                   isSelected: !AppSettings.subtitleBgEnabled,
                   onTap: () async {
                     await AppSettings.setSubtitleBgEnabled(false);
@@ -965,9 +1484,135 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 20),
+
+          // 8. Preset Subtitle Vertical Position
+          _buildSettingSection(
+            title: 'Preset Posisi Vertikal Takarir',
+            subtitle: 'Pilih posisi standar teks terjemahan di layar TV',
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildOptionChip(
+                  label: 'Atas (15%)',
+                  isSelected: AppSettings.subtitlePosition == 'top',
+                  onTap: () async {
+                    await AppSettings.setSubtitlePosition('top');
+                    setState(() {});
+                  },
+                ),
+                _buildOptionChip(
+                  label: 'Tengah Atas (32%)',
+                  isSelected: AppSettings.subtitlePosition == 'middle_top',
+                  onTap: () async {
+                    await AppSettings.setSubtitlePosition('middle_top');
+                    setState(() {});
+                  },
+                ),
+                _buildOptionChip(
+                  label: 'Tengah Layar (50%) • Default',
+                  isSelected: AppSettings.subtitlePosition == 'center',
+                  onTap: () async {
+                    await AppSettings.setSubtitlePosition('center');
+                    setState(() {});
+                  },
+                ),
+                _buildOptionChip(
+                  label: 'Tengah Bawah (65%)',
+                  isSelected: AppSettings.subtitlePosition == 'middle_bottom',
+                  onTap: () async {
+                    await AppSettings.setSubtitlePosition('middle_bottom');
+                    setState(() {});
+                  },
+                ),
+                _buildOptionChip(
+                  label: 'Bawah Penuh (85%)',
+                  isSelected: AppSettings.subtitlePosition == 'bottom',
+                  onTap: () async {
+                    await AppSettings.setSubtitlePosition('bottom');
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 9. Manual Vertical Position Stepper (5% - 95%)
+          _buildSettingSection(
+            title: 'Atur Posisi Vertikal Manual (Stepper Nudge)',
+            subtitle: 'Geser posisi subtitle naik/turun per 5% agar pas dengan subtitle bawaan video',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF38BDF8)),
+                  ),
+                  child: Text(
+                    'Posisi: ${(AppSettings.subtitleVerticalOffset * 100).toInt()}% dari batas atas',
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                TvFocusable(
+                  onPressed: () async {
+                    final cur = AppSettings.subtitleVerticalOffset;
+                    await AppSettings.setSubtitleVerticalOffset(cur - 0.05);
+                    setState(() {});
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  backgroundColor: const Color(0xFF334155),
+                  focusedBackgroundColor: const Color(0xFF38BDF8),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text('Naikkan (-5%)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TvFocusable(
+                  onPressed: () async {
+                    final cur = AppSettings.subtitleVerticalOffset;
+                    await AppSettings.setSubtitleVerticalOffset(cur + 0.05);
+                    setState(() {});
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  backgroundColor: const Color(0xFF334155),
+                  focusedBackgroundColor: const Color(0xFF38BDF8),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text('Turunkan (+5%)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TvFocusable(
+                  onPressed: () async {
+                    await AppSettings.setSubtitleVerticalOffset(0.50);
+                    setState(() {});
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  backgroundColor: const Color(0xFF334155),
+                  focusedBackgroundColor: const Color(0xFFFF2D55),
+                  child: const Text('Reset Tengah (50%)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 28),
 
-          // TV System Info Box
+          // 10. TV System Info Box
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -989,7 +1634,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('• Versi: v1.0.0 (Android TV Edition)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                const Text('• Versi: v1.0.1 (Android TV Edition)', style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 4),
                 const Text('• Renderer GPU: Skia OpenGL ES Universal (Anti-Glitch / Anti-Green Frame)', style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 4),
@@ -1045,6 +1690,43 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   ],
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorChip(String label, int colorValue) {
+    final isSelected = AppSettings.subtitleFontColor == colorValue;
+    return TvFocusable(
+      onPressed: () async {
+        await AppSettings.setSubtitleFontColor(colorValue);
+        setState(() {});
+      },
+      borderRadius: BorderRadius.circular(6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
+      focusedBackgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF334155),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: Color(colorValue),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white54, width: 1),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+              fontSize: 12,
             ),
           ),
         ],
