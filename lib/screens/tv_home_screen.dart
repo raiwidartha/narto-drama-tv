@@ -28,6 +28,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   // Providers list
   List<ProviderInfo> _providers = [];
+  bool _isSyncingProviders = false;
 
   // History & Bookmarks
   List<HistoryItem> _historyItems = [];
@@ -141,6 +142,46 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       setState(() {
         _bookmarkItems = list;
       });
+    }
+  }
+
+  Future<void> _syncProvidersManual() async {
+    if (_isSyncingProviders) return;
+    setState(() => _isSyncingProviders = true);
+    try {
+      final res = await NartoApiService.fetchProviderSections(provider: 'general');
+      final list = res['providers'] as List<ProviderInfo>?;
+      if (list != null && list.isNotEmpty) {
+        setState(() {
+          _providers = list;
+          _isSyncingProviders = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Sinkronisasi sukses: ${list.length} provider aktif dimuat.'),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
+      } else {
+        setState(() => _isSyncingProviders = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tidak ada perubahan daftar provider dari server.')),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isSyncingProviders = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal sinkronisasi ($e)'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
     }
   }
 
@@ -492,9 +533,28 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 'Semua Provider (${_providers.length})',
                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const Text(
-                'Pilih provider untuk membuka katalog drama',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
+              TvFocusable(
+                onPressed: _syncProvidersManual,
+                borderRadius: BorderRadius.circular(6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                backgroundColor: const Color(0xFF1E293B),
+                focusedBackgroundColor: const Color(0xFF38BDF8),
+                child: Row(
+                  children: [
+                    _isSyncingProviders
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.sync_rounded, color: Color(0xFF38BDF8), size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isSyncingProviders ? 'Menyinkronkan...' : 'Sinkronkan Provider',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -937,25 +997,52 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 const SizedBox(height: 4),
                 const Text('• Kompatibilitas: Android TV 7.0 (API 24) s.d Android TV 15 (API 35)', style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 14),
-                TvFocusable(
-                  onPressed: () {
-                    PaintingBinding.instance.imageCache.clear();
-                    PaintingBinding.instance.imageCache.clearLiveImages();
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cache gambar berhasil dibersihkan')),
-                    );
-                  },
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  backgroundColor: const Color(0xFF334155),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.cleaning_services_rounded, color: Colors.white, size: 16),
-                      SizedBox(width: 8),
-                      Text('Bersihkan Cache Gambar', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    TvFocusable(
+                      onPressed: () {
+                        PaintingBinding.instance.imageCache.clear();
+                        PaintingBinding.instance.imageCache.clearLiveImages();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cache gambar berhasil dibersihkan')),
+                        );
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      backgroundColor: const Color(0xFF334155),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cleaning_services_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 8),
+                          Text('Bersihkan Cache Gambar', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    TvFocusable(
+                      onPressed: _syncProvidersManual,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      backgroundColor: const Color(0xFF0284C7),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _isSyncingProviders
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.sync_rounded, color: Colors.white, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isSyncingProviders ? 'Menyinkronkan...' : 'Sinkronkan Daftar Provider',
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
