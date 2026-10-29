@@ -302,6 +302,20 @@ class AppSettings {
   /// Save updated provider counts
   static Future<void> saveProviderCounts(Map<String, int> counts) async {
     _providerCountCache.addAll(counts);
+    for (int i = 0; i < _allProviders.length; i++) {
+      final p = _allProviders[i];
+      final keyLower = p.key.toLowerCase();
+      if (counts.containsKey(keyLower)) {
+        final newCount = counts[keyLower]!;
+        _allProviders[i] = ProviderInfo(
+          key: p.key,
+          label: p.label,
+          dramaCount: newCount,
+          labelWithCount: newCount > 0 ? '${p.label} ($newCount)' : p.label,
+        );
+      }
+    }
+    _allProviders.sort((a, b) => b.dramaCount.compareTo(a.dramaCount));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyProviderStatsCache, json.encode(_providerCountCache));
   }

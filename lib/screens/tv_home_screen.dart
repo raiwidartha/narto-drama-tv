@@ -44,12 +44,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   // Dedicated remote entry focus nodes
   final FocusNode _firstHomeFocusNode = FocusNode();
+  final FocusNode _firstProviderChipFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstHistoryFocusNode = FocusNode();
   final FocusNode _firstBookmarkFocusNode = FocusNode();
   final FocusNode _searchInputFocusNode = FocusNode();
   final FocusNode _searchClearFocusNode = FocusNode();
   final FocusNode _searchSubmitBtnFocusNode = FocusNode();
+  final FocusNode _firstQuickKeywordFocusNode = FocusNode();
+  final FocusNode _firstSearchResultFocusNode = FocusNode();
   final FocusNode _settingsFirstFocusNode = FocusNode();
   final ScrollController _settingsScrollController = ScrollController();
 
@@ -135,6 +138,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             _homePage++;
             _isLoadingHome = false;
           });
+          if (reset && _selectedTabIndex == 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _firstHomeFocusNode.canRequestFocus) {
+                _firstHomeFocusNode.requestFocus();
+              }
+            });
+          }
         }
       } else {
         final res = await NartoApiService.fetchProviderSections(
@@ -167,6 +177,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             _homePage++;
             _isLoadingHome = false;
           });
+          if (reset && _selectedTabIndex == 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _firstHomeFocusNode.canRequestFocus) {
+                _firstHomeFocusNode.requestFocus();
+              }
+            });
+          }
         }
       }
     } catch (e) {
@@ -199,49 +216,183 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   Future<void> _syncProvidersManual() async {
     if (_isSyncingProviders) return;
+
+    List<String> keys = _providers.map((p) => p.key).toList();
+    if (keys.isEmpty) {
+      keys = AppSettings.allProviders.map((p) => p.key).toList();
+    }
+    keys = keys.where((k) => k != 'all' && k != 'general').toList();
+    if (keys.isEmpty) {
+      keys = ['melolo', 'candyjar', 'reelshort', 'minutedrama', 'stardusttv', 'moboreels', 'shortmax', 'dramabox'];
+    }
+
     setState(() => _isSyncingProviders = true);
+
+    int currentStep = 0;
+    int totalSteps = keys.length;
+    double progress = 0.0;
+    String statusText = 'Menghubungkan ke upstream API...';
+    int lastFoundCount = 0;
+    bool isAuditComplete = false;
+    String? auditError;
+    StateSetter? dialogSetState;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            dialogSetState = setDialogState;
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(
+                    isAuditComplete ? Icons.check_circle_rounded : Icons.sync_rounded,
+                    color: isAuditComplete ? const Color(0xFF10B981) : const Color(0xFF38BDF8),
+                    size: 24,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    isAuditComplete ? 'Sinkronisasi Selesai' : 'Sinkronisasi Provider',
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      statusText,
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: isAuditComplete ? 1.0 : (progress > 0 ? progress : null),
+                        minHeight: 10,
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isAuditComplete ? const Color(0xFF10B981) : const Color(0xFFFF2D55),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${(progress * 100).toInt()}% selesai ($currentStep / $totalSteps)',
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                        if (lastFoundCount > 0)
+                          Text(
+                            'Drama terdeteksi: $lastFoundCount',
+                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                      ],
+                    ),
+                    if (auditError != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        auditError,
+                        style: const TextStyle(color: Color(0xFFFF2D55), fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                if (!isAuditComplete)
+                  TvFocusable(
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                    borderRadius: BorderRadius.circular(8),
+                    backgroundColor: const Color(0xFF1E293B),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: const Text('Latar Belakang', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  ),
+                if (isAuditComplete)
+                  TvFocusable(
+                    autofocus: true,
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                    borderRadius: BorderRadius.circular(8),
+                    backgroundColor: const Color(0xFFFF2D55),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    child: const Text('Tutup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
     try {
-      final res = await NartoApiService.fetchProviderSections(provider: 'melolo');
-      final list = res['providers'] as List<ProviderInfo>?;
-      if (list != null && list.isNotEmpty) {
+      try {
+        final secRes = await NartoApiService.fetchProviderSections(provider: 'melolo');
+        final apiProviders = secRes['providers'] as List<ProviderInfo>?;
+        if (apiProviders != null && apiProviders.isNotEmpty) {
+          final newKeys = apiProviders.map((p) => p.key).where((k) => k != 'all' && k != 'general').toList();
+          if (newKeys.isNotEmpty) {
+            keys = newKeys;
+            totalSteps = keys.length;
+          }
+        }
+      } catch (_) {}
+
+      await NartoApiService.auditAllProviders(
+        providerKeys: keys,
+        onProgress: (current, total, name, count) {
+          currentStep = current;
+          totalSteps = total;
+          progress = current / total;
+          statusText = '[$current/$total] ${name.toUpperCase()}: $count drama';
+          lastFoundCount = count;
+          if (dialogSetState != null) {
+            dialogSetState!(() {});
+          }
+        },
+      );
+
+      final updated = AppSettings.allProviders;
+      if (mounted) {
         setState(() {
-          _providers = list;
+          _providers = updated;
           _isSyncingProviders = false;
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Sinkronisasi sukses: ${list.length} provider aktif dimuat.'),
-              backgroundColor: const Color(0xFF10B981),
-            ),
-          );
-        }
-      } else {
-        setState(() {
-          _providers = AppSettings.allProviders;
-          _isSyncingProviders = false;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Daftar provider dimuat dari database: ${_providers.length} provider.'),
-              backgroundColor: const Color(0xFF10B981),
-            ),
-          );
-        }
+        _loadHomeCatalog(reset: true);
       }
-    } catch (e) {
-      setState(() {
-        _providers = AppSettings.allProviders;
-        _isSyncingProviders = false;
-      });
+
+      isAuditComplete = true;
+      statusText = 'Audit selesai! ${keys.length} provider berhasil diverifikasi dari API.';
+      if (dialogSetState != null) {
+        dialogSetState!(() {});
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Sinkronisasi memakai database lokal: ${_providers.length} provider.'),
-            backgroundColor: const Color(0xFF38BDF8),
+            content: Text('Sinkronisasi provider selesai! Total ${keys.length} provider terverifikasi.'),
+            backgroundColor: const Color(0xFF10B981),
           ),
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSyncingProviders = false;
+        });
+      }
+      isAuditComplete = true;
+      auditError = 'Terjadi kendala saat sinkronisasi: $e';
+      statusText = 'Sinkronisasi selesai dengan catatan.';
+      if (dialogSetState != null) {
+        dialogSetState!(() {});
       }
     }
   }
@@ -313,12 +464,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       node.dispose();
     }
     _firstHomeFocusNode.dispose();
+    _firstProviderChipFocusNode.dispose();
     _firstProviderFocusNode.dispose();
     _firstHistoryFocusNode.dispose();
     _firstBookmarkFocusNode.dispose();
     _searchInputFocusNode.dispose();
     _searchClearFocusNode.dispose();
     _searchSubmitBtnFocusNode.dispose();
+    _firstQuickKeywordFocusNode.dispose();
+    _firstSearchResultFocusNode.dispose();
     _settingsFirstFocusNode.dispose();
     _settingsScrollController.dispose();
     _searchController.dispose();
@@ -493,7 +647,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       onKeyEvent: (node, event) {
                         if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           if (index == 0) {
-                            _firstHomeFocusNode.requestFocus();
+                            if (_firstProviderChipFocusNode.canRequestFocus) {
+                              _firstProviderChipFocusNode.requestFocus();
+                            } else {
+                              _firstHomeFocusNode.requestFocus();
+                            }
                             return KeyEventResult.handled;
                           } else if (index == 1) {
                             _firstProviderFocusNode.requestFocus();
@@ -582,13 +740,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              _buildProviderChip('general', 'Semua Provider', count: 0),
+              _buildProviderChip('general', 'Semua Provider', count: 0, isFirst: true),
               ..._providers.take(16).map((p) => _buildProviderChip(p.key, p.label, count: p.dramaCount)),
               TvFocusable(
                 onPressed: () => _onTabChanged(1),
                 borderRadius: BorderRadius.circular(6),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 backgroundColor: const Color(0xFF1E293B),
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      if (_firstHomeFocusNode.canRequestFocus) {
+                        _firstHomeFocusNode.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      _tabFocusNodes[0].requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
                 child: const Row(
                   children: [
                     Text('Lihat Semua 56...', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
@@ -604,14 +776,24 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         // Grid of Drama Cards
         Expanded(
           child: _homeDramas.isEmpty && _isLoadingHome
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: Color(0xFFFF2D55)),
-                      SizedBox(height: 14),
-                      Text('Memuat Drama Populer...', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    ],
+              ? Center(
+                  child: TvFocusable(
+                    focusNode: _firstHomeFocusNode,
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        _firstProviderChipFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Color(0xFFFF2D55)),
+                        const SizedBox(height: 14),
+                        Text('Memuat drama provider ${_activeProvider.toUpperCase()}...', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                      ],
+                    ),
                   ),
                 )
               : _homeError.isNotEmpty && _homeDramas.isEmpty
@@ -666,6 +848,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         return TvDramaCard(
                           drama: drama,
                           focusNode: index == 0 ? _firstHomeFocusNode : null,
+                          onKeyEvent: index < 6
+                              ? (node, event) {
+                                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                    _firstProviderChipFocusNode.requestFocus();
+                                    return KeyEventResult.handled;
+                                  }
+                                  return KeyEventResult.ignored;
+                                }
+                              : null,
                           onTap: () => _openDetail(drama),
                         );
                       },
@@ -675,12 +866,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
-  Widget _buildProviderChip(String key, String label, {int count = 0}) {
+  Widget _buildProviderChip(String key, String label, {int count = 0, bool isFirst = false}) {
     final isSelected = _activeProvider == key;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: TvFocusable(
+        focusNode: isFirst ? _firstProviderChipFocusNode : null,
         onPressed: () => _selectProvider(key),
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              if (_firstHomeFocusNode.canRequestFocus) {
+                _firstHomeFocusNode.requestFocus();
+              }
+              return KeyEventResult.handled;
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              _tabFocusNodes[0].requestFocus();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
         borderRadius: BorderRadius.circular(6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         backgroundColor: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF1E293B),
@@ -979,126 +1185,193 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final dialogController = TextEditingController(text: _searchController.text);
     final focusNode = FocusNode();
     final cancelBtnFocus = FocusNode();
+    final clearBtnFocus = FocusNode();
     final submitBtnFocus = FocusNode();
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           focusNode.requestFocus();
         });
 
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.search_rounded, color: Color(0xFFFF2D55), size: 24),
-              SizedBox(width: 10),
-              Text(
-                'Ketik Judul Drama',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _searchInputFocusNode.canRequestFocus) {
+                  _searchInputFocusNode.requestFocus();
+                }
+              });
+            }
+          },
+          child: StatefulBuilder(
+            builder: (builderCtx, setDialogState) {
+              final currentText = dialogController.text;
+              return AlertDialog(
+                backgroundColor: const Color(0xFF0F172A),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.search_rounded, color: Color(0xFFFF2D55), size: 24),
+                    SizedBox(width: 10),
+                    Text(
+                      'Ketik Judul Drama',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 500,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
+                        ),
+                        child: Focus(
+                          onKeyEvent: (node, event) {
+                            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                              submitBtnFocus.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: dialogController,
+                            focusNode: focusNode,
+                            autofocus: true,
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'Masukkan judul drama...',
+                              hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+                              border: InputBorder.none,
+                              suffixIcon: currentText.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, color: Colors.white70, size: 20),
+                                      onPressed: () {
+                                        dialogController.clear();
+                                        setDialogState(() {});
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            textInputAction: TextInputAction.search,
+                            onChanged: (_) => setDialogState(() {}),
+                            onSubmitted: (val) {
+                              Navigator.of(ctx).pop();
+                              _searchController.text = val;
+                              _performSearch(val);
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Gunakan remote TV: ketik kata kunci, lalu geser ke tombol Cari Sekarang.',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ],
                   ),
-                  child: Focus(
+                ),
+                actions: [
+                  TvFocusable(
+                    focusNode: cancelBtnFocus,
                     onKeyEvent: (node, event) {
-                      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        submitBtnFocus.requestFocus();
-                        return KeyEventResult.handled;
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          focusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          clearBtnFocus.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                       }
                       return KeyEventResult.ignored;
                     },
-                    child: TextField(
-                      controller: dialogController,
-                      focusNode: focusNode,
-                      autofocus: true,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      decoration: const InputDecoration(
-                        hintText: 'Masukkan judul drama...',
-                        hintStyle: TextStyle(color: Colors.white38, fontSize: 14),
-                        border: InputBorder.none,
-                      ),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (val) {
-                        Navigator.of(ctx).pop();
-                        _searchController.text = val;
-                        _performSearch(val);
-                      },
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    borderRadius: BorderRadius.circular(8),
+                    backgroundColor: const Color(0xFF1E293B),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    child: const Text('Batal', style: TextStyle(color: Colors.white70)),
+                  ),
+                  TvFocusable(
+                    focusNode: clearBtnFocus,
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          focusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          cancelBtnFocus.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          submitBtnFocus.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    onPressed: () {
+                      dialogController.clear();
+                      setDialogState(() {});
+                      focusNode.requestFocus();
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    backgroundColor: const Color(0xFF1E293B),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.clear_rounded, size: 16, color: Colors.white70),
+                        SizedBox(width: 4),
+                        Text('Hapus Teks', style: TextStyle(color: Colors.white70)),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Ketik dengan keyboard virtual remote TV, lalu tekan Cari / Submit.',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
-              ],
-            ),
+                  TvFocusable(
+                    focusNode: submitBtnFocus,
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          focusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          clearBtnFocus.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    onPressed: () {
+                      final query = dialogController.text.trim();
+                      Navigator.of(ctx).pop();
+                      _searchController.text = query;
+                      _performSearch(query);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    backgroundColor: const Color(0xFFFF2D55),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    child: const Text('Cari Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
           ),
-          actions: [
-            TvFocusable(
-              focusNode: cancelBtnFocus,
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent) {
-                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    focusNode.requestFocus();
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                    submitBtnFocus.requestFocus();
-                    return KeyEventResult.handled;
-                  }
-                }
-                return KeyEventResult.ignored;
-              },
-              onPressed: () => Navigator.of(ctx).pop(),
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFF1E293B),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              child: const Text('Batal', style: TextStyle(color: Colors.white70)),
-            ),
-            TvFocusable(
-              focusNode: submitBtnFocus,
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent) {
-                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    focusNode.requestFocus();
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                    cancelBtnFocus.requestFocus();
-                    return KeyEventResult.handled;
-                  }
-                }
-                return KeyEventResult.ignored;
-              },
-              onPressed: () {
-                final query = dialogController.text.trim();
-                Navigator.of(ctx).pop();
-                _searchController.text = query;
-                _performSearch(query);
-              },
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFFFF2D55),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              child: const Text('Cari Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
         );
       },
-    );
+    ).then((_) {
+      if (mounted && _searchInputFocusNode.canRequestFocus) {
+        _searchInputFocusNode.requestFocus();
+      }
+    });
   }
 
   Widget _buildSearchTab() {
@@ -1134,12 +1407,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         _tabFocusNodes[4].requestFocus();
                         return KeyEventResult.handled;
                       } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        if (queryText.isNotEmpty) {
-                          _searchClearFocusNode.requestFocus();
-                        } else {
-                          _searchSubmitBtnFocusNode.requestFocus();
-                        }
+                        _searchClearFocusNode.requestFocus();
                         return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                        if (_firstQuickKeywordFocusNode.canRequestFocus) {
+                          _firstQuickKeywordFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (_firstSearchResultFocusNode.canRequestFocus) {
+                          _firstSearchResultFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                      } else if (event.logicalKey == LogicalKeyboardKey.escape ||
+                          event.logicalKey == LogicalKeyboardKey.backspace ||
+                          event.logicalKey == LogicalKeyboardKey.goBack) {
+                        if (queryText.isNotEmpty) {
+                          setState(() {
+                            _searchController.clear();
+                            _searchResults = [];
+                            _searchError = '';
+                          });
+                          return KeyEventResult.handled;
+                        }
                       }
                     }
                     return KeyEventResult.ignored;
@@ -1178,44 +1466,64 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              if (queryText.isNotEmpty) ...[
-                TvFocusable(
-                  focusNode: _searchClearFocusNode,
-                  onKeyEvent: (node, event) {
-                    if (event is KeyDownEvent) {
-                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                        _tabFocusNodes[4].requestFocus();
+              TvFocusable(
+                focusNode: _searchClearFocusNode,
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      _tabFocusNodes[4].requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _searchInputFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                      _searchSubmitBtnFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      if (_firstQuickKeywordFocusNode.canRequestFocus) {
+                        _firstQuickKeywordFocusNode.requestFocus();
                         return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                        _searchInputFocusNode.requestFocus();
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _searchSubmitBtnFocusNode.requestFocus();
+                      } else if (_firstSearchResultFocusNode.canRequestFocus) {
+                        _firstSearchResultFocusNode.requestFocus();
                         return KeyEventResult.handled;
                       }
                     }
-                    return KeyEventResult.ignored;
-                  },
-                  onPressed: () {
+                  }
+                  return KeyEventResult.ignored;
+                },
+                onPressed: () {
+                  if (queryText.isNotEmpty) {
                     setState(() {
                       _searchController.clear();
                       _searchResults = [];
                       _searchError = '';
                     });
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  backgroundColor: const Color(0xFF1E293B),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
-                      SizedBox(width: 6),
-                      Text('Hapus', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                    ],
-                  ),
+                  }
+                  _searchInputFocusNode.requestFocus();
+                },
+                borderRadius: BorderRadius.circular(10),
+                backgroundColor: const Color(0xFF1E293B),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.clear_rounded,
+                      color: queryText.isNotEmpty ? Colors.white70 : Colors.white38,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Hapus',
+                      style: TextStyle(
+                        color: queryText.isNotEmpty ? Colors.white70 : Colors.white38,
+                        fontSize: 13,
+                        fontWeight: queryText.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-              ],
+              ),
+              const SizedBox(width: 10),
               TvFocusable(
                 focusNode: _searchSubmitBtnFocusNode,
                 onKeyEvent: (node, event) {
@@ -1224,12 +1532,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       _tabFocusNodes[4].requestFocus();
                       return KeyEventResult.handled;
                     } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                      if (queryText.isNotEmpty) {
-                        _searchClearFocusNode.requestFocus();
-                      } else {
-                        _searchInputFocusNode.requestFocus();
-                      }
+                      _searchClearFocusNode.requestFocus();
                       return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      if (_firstQuickKeywordFocusNode.canRequestFocus) {
+                        _firstQuickKeywordFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      } else if (_firstSearchResultFocusNode.canRequestFocus) {
+                        _firstSearchResultFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
                     }
                   }
                   return KeyEventResult.ignored;
@@ -1270,11 +1582,28 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   ],
                 ),
                 const SizedBox(width: 8),
-                ...quickKeywords.map((kw) {
+                ...quickKeywords.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final kw = entry.value;
                   final isCurrent = queryText.toLowerCase() == kw.toLowerCase();
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: TvFocusable(
+                      focusNode: idx == 0 ? _firstQuickKeywordFocusNode : null,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent) {
+                          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            _searchInputFocusNode.requestFocus();
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                            if (_firstSearchResultFocusNode.canRequestFocus) {
+                              _firstSearchResultFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                          }
+                        }
+                        return KeyEventResult.ignored;
+                      },
                       onPressed: () {
                         setState(() {
                           _searchController.text = kw;
@@ -1345,6 +1674,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               final drama = _searchResults[index];
                               return TvDramaCard(
                                 drama: drama,
+                                focusNode: index == 0 ? _firstSearchResultFocusNode : null,
+                                onKeyEvent: index < 6
+                                    ? (node, event) {
+                                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                          if (_firstQuickKeywordFocusNode.canRequestFocus) {
+                                            _firstQuickKeywordFocusNode.requestFocus();
+                                          } else {
+                                            _searchInputFocusNode.requestFocus();
+                                          }
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
+                                      }
+                                    : null,
                                 onTap: () => _openDetail(drama),
                               );
                             },

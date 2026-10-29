@@ -362,15 +362,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
   }
 
-  void _togglePlayPause() {
+  void _togglePlayPause({bool showHud = false}) {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     if (c.value.isPlaying) {
       c.pause();
-      _showHudTemporarily(persistent: true);
+      if (showHud) {
+        _showHudTemporarily(persistent: true);
+      }
     } else {
       c.play();
-      _showHudTemporarily(persistent: false);
+      if (showHud) {
+        _showHudTemporarily(persistent: false);
+      }
     }
   }
 
@@ -409,6 +413,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           setState(() {
             _showControls = false;
           });
+          _rootFocusNode.requestFocus();
         }
       });
     }
@@ -498,25 +503,25 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.space ||
         key == LogicalKeyboardKey.gameButtonA) {
-      _togglePlayPause();
-      _showHudTemporarily(persistent: false);
-      _playPauseFocusNode.requestFocus();
+      // Center button resumes/pauses directly WITHOUT popping up HUD/center controls
+      _togglePlayPause(showHud: false);
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowLeft) {
+      // Left seeks backward without popping up HUD/center controls
       _seekBy(-10);
-      _showHudTemporarily(persistent: false);
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowRight) {
+      // Right seeks forward without popping up HUD/center controls
       _seekBy(10);
-      _showHudTemporarily(persistent: false);
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowUp) {
+      // Only pressing UP brings up the center HUD buttons
       _showHudTemporarily(persistent: false);
       _playPauseFocusNode.requestFocus();
       return KeyEventResult.handled;
@@ -1177,20 +1182,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             focusedBackgroundColor: const Color(0xFF38BDF8),
                             child: const Icon(
                               Icons.tune_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-
-                          // Synopsis Modal Button
-                          TvFocusable(
-                            onPressed: _showSynopsisModal,
-                            padding: const EdgeInsets.all(12),
-                            backgroundColor: Colors.white12,
-                            focusedBackgroundColor: const Color(0xFFFF2D55),
-                            child: const Icon(
-                              Icons.info_outline_rounded,
                               color: Colors.white,
                               size: 32,
                             ),

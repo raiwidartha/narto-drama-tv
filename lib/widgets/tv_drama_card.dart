@@ -10,6 +10,7 @@ class TvDramaCard extends StatelessWidget {
   final double width;
   final double height;
   final FocusNode? focusNode;
+  final KeyEventResult Function(FocusNode, KeyEvent)? onKeyEvent;
 
   const TvDramaCard({
     super.key,
@@ -17,6 +18,7 @@ class TvDramaCard extends StatelessWidget {
     required this.onTap,
     this.autofocus = false,
     this.focusNode,
+    this.onKeyEvent,
     this.width = 160,
     this.height = 240,
   });
@@ -27,6 +29,7 @@ class TvDramaCard extends StatelessWidget {
       focusNode: focusNode,
       autofocus: autofocus,
       onPressed: onTap,
+      onKeyEvent: onKeyEvent,
       scale: 1.06,
       borderRadius: BorderRadius.circular(10),
       focusBorderColor: const Color(0xFFFF2D55),
