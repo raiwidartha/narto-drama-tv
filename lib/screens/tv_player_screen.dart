@@ -558,7 +558,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return;
     }
 
-    // Clean playback: require holding Back for 1 second (1000ms)
+    // Clean playback: require holding Back for 550ms
     if (_backHoldStartTime == null) {
       _backHoldStartTime = DateTime.now();
       setState(() {
@@ -569,24 +569,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _holdHintTimer?.cancel();
 
       _backHoldProgressTimer?.cancel();
-      _backHoldProgressTimer = Timer.periodic(const Duration(milliseconds: 30), (t) {
+      _backHoldProgressTimer = Timer.periodic(const Duration(milliseconds: 20), (t) {
         if (!mounted || _backHoldStartTime == null) {
           t.cancel();
           return;
         }
         final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
-        final progress = (elapsed / 1000.0).clamp(0.0, 1.0);
+        final progress = (elapsed / 550.0).clamp(0.0, 1.0);
         setState(() {
           _holdBackProgress = progress;
         });
-        if (elapsed >= 1000) {
+        if (elapsed >= 550) {
           t.cancel();
           _triggerHoldExit();
         }
       });
 
       _backHoldTimer?.cancel();
-      _backHoldTimer = Timer(const Duration(milliseconds: 1000), () {
+      _backHoldTimer = Timer(const Duration(milliseconds: 550), () {
         _triggerHoldExit();
       });
     }
@@ -595,7 +595,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void _onBackKeyRepeat() {
     if (_isHoldingBack && _backHoldStartTime != null) {
       final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
-      if (elapsed >= 1000) {
+      if (elapsed >= 500) {
         _triggerHoldExit();
       }
     }
@@ -607,7 +607,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
           : 0;
       _cancelBackHold();
-      if (elapsed < 1000 && !_isConfirmingExit) {
+      if (elapsed < 500 && !_isConfirmingExit) {
         _showHoldBackHint();
       }
     }
