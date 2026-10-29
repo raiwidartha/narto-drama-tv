@@ -72,6 +72,32 @@ void main() {
     expect(pressCount, equals(4));
   });
 
+  testWidgets('TvFocusable key repeat support', (WidgetTester tester) async {
+    int pressCount = 0;
+    final focusNode = FocusNode();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TvFocusable(
+            focusNode: focusNode,
+            autofocus: true,
+            onPressed: () => pressCount++,
+            child: const Text('Repeat Button'),
+          ),
+        ),
+      ),
+    );
+
+    focusNode.requestFocus();
+    await tester.pump();
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(pressCount, equals(1));
+  });
+
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const NartoDramaTvApp());
     expect(find.byType(NartoDramaTvApp), findsOneWidget);

@@ -620,22 +620,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
       if (!isAnyTabFocused) {
         // Return focus to the currently active tab in navbar
-        if (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length) {
-          _tabFocusNodes[_selectedTabIndex].requestFocus();
-        } else {
-          _tabFocusNodes[0].requestFocus();
-        }
+        final targetIndex = (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length)
+            ? _selectedTabIndex
+            : 0;
+        _tabFocusNodes[targetIndex].requestFocus();
         return;
       }
 
-      // If already on the navbar, but NOT on Tab 0 (Beranda):
-      // Return to Tab 0 (Beranda)
-      if (_selectedTabIndex != 0) {
-        _onTabChanged(0);
-        return;
-      }
-
-      // If already on Tab 0 navbar, show exit confirmation dialog
+      // If already on the navbar, show exit confirmation dialog
       final shouldExit = await _showExitConfirmationDialog();
       if (shouldExit == true) {
         SystemNavigator.pop();
@@ -743,7 +735,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     padding: const EdgeInsets.only(right: 8),
                     child: TvFocusable(
                       focusNode: index < _tabFocusNodes.length ? _tabFocusNodes[index] : null,
-                      autofocus: index == 0,
                       onPressed: () {
                         if (_selectedTabIndex == index) {
                           _focusTabContent(index);
@@ -752,7 +743,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         }
                       },
                       onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent) {
+                        if (event is KeyDownEvent || event is KeyRepeatEvent) {
                           if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                             if (index < _tabFocusNodes.length - 1) {
                               _onTabChanged(index + 1);
@@ -1681,7 +1672,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               Expanded(
                 child: TvFocusable(
                   focusNode: _searchInputFocusNode,
-                  autofocus: true,
                   onPressed: _openTvSearchDialog,
                   onKeyEvent: (node, event) {
                     if (event is KeyDownEvent) {
