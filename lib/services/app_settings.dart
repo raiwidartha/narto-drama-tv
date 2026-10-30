@@ -23,9 +23,35 @@ class AppSettings {
 
   static String _currentBaseUrl = defaultBaseUrl;
   static String? _customCookie;
-  static final Map<String, int> _providerCountCache = {};
+  static final Map<String, int> _providerCountCache = {
+    'anyreel': 1475,
+    'dramabox': 1121,
+    'reelshort': 890,
+    'shortmax': 1632,
+    'vigloo': 247,
+    'moboreels': 350,
+  };
 
-  static final List<ProviderInfo> _allProviders = [];
+  static final List<ProviderInfo> _allProviders = [
+    ProviderInfo(key: 'shortmax', label: 'ShortMax', dramaCount: 1632, labelWithCount: 'ShortMax (1632)'),
+    ProviderInfo(key: 'anyreel', label: 'AnyReel', dramaCount: 1475, labelWithCount: 'AnyReel (1475)'),
+    ProviderInfo(key: 'dramabox', label: 'DramaBox', dramaCount: 1121, labelWithCount: 'DramaBox (1121)'),
+    ProviderInfo(key: 'reelshort', label: 'ReelShort', dramaCount: 890, labelWithCount: 'ReelShort (890)'),
+    ProviderInfo(key: 'moboreels', label: 'MoboReels', dramaCount: 350, labelWithCount: 'MoboReels (350)'),
+    ProviderInfo(key: 'vigloo', label: 'Vigloo', dramaCount: 247, labelWithCount: 'Vigloo (247)'),
+  ];
+
+  // Merged Home Providers setting
+  static const String keyHomeMergedProviders = 'config_home_merged_providers';
+  static const List<String> defaultMergedProviders = [
+    'anyreel',
+    'dramabox',
+    'reelshort',
+    'shortmax',
+    'vigloo',
+    'moboreels',
+  ];
+  static List<String> _homeMergedProviders = List.from(defaultMergedProviders);
 
   // Subtitle preferences (TV default: center & sedang 24sp, tebal, sans-serif)
   static String _subtitlePosition = 'center'; // 'bottom', 'middle_bottom', 'center', 'middle_top', 'top', 'custom'
@@ -44,6 +70,13 @@ class AppSettings {
   static bool get isProxyMode => !_currentBaseUrl.contains('narto-drama.com');
   static String? get customCookie => _customCookie;
   static List<ProviderInfo> get allProviders => List.unmodifiable(_allProviders);
+  static List<String> get homeMergedProviders => List.unmodifiable(_homeMergedProviders);
+
+  static Future<void> setHomeMergedProviders(List<String> providers) async {
+    _homeMergedProviders = List.from(providers);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(keyHomeMergedProviders, _homeMergedProviders);
+  }
 
   static String get subtitlePosition => _subtitlePosition;
   static double get subtitleVerticalOffset => _subtitleVerticalOffset;
@@ -168,6 +201,13 @@ class AppSettings {
           _providerCountCache[entry.key.toLowerCase()] = (entry.value as num).toInt();
         }
       } catch (_) {}
+    }
+
+    final savedMerged = prefs.getStringList(keyHomeMergedProviders);
+    if (savedMerged != null && savedMerged.isNotEmpty) {
+      _homeMergedProviders = savedMerged;
+    } else {
+      _homeMergedProviders = List.from(defaultMergedProviders);
     }
   }
 

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narto_drama_tv/main.dart';
 import 'package:narto_drama_tv/models/drama.dart';
+import 'package:narto_drama_tv/services/app_settings.dart';
 import 'package:narto_drama_tv/widgets/tv_focusable.dart';
 
 void main() {
@@ -175,6 +176,20 @@ void main() {
       orElse: () => epSoftsub.multiSubtitles.first,
     );
     expect(chosen.label, equals('Bahasa Indonesia'));
+  });
+
+  test('Home merged providers defaults and drama count mapping test', () async {
+    expect(AppSettings.defaultMergedProviders, contains('vigloo'));
+    expect(AppSettings.defaultMergedProviders, contains('anyreel'));
+    expect(AppSettings.defaultMergedProviders, contains('dramabox'));
+    expect(AppSettings.defaultMergedProviders, contains('reelshort'));
+    expect(AppSettings.defaultMergedProviders, contains('shortmax'));
+    expect(AppSettings.defaultMergedProviders, contains('moboreels'));
+
+    // Verify drama counts in provider stats
+    expect(AppSettings.getDramaCount('vigloo'), greaterThan(0));
+    expect(AppSettings.getDramaCount('anyreel'), greaterThan(0));
+    expect(AppSettings.getDramaCount('shortmax'), greaterThan(0));
   });
 
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {

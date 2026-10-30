@@ -46,6 +46,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   SubtitleTrack? _selectedTrack;
   String _preferredLanguageCode = 'id';
   bool _isAutoAdvancing = false;
+  bool _isSubtitleModalOpen = false;
 
   bool get _hasSoftsub => _availableSubtitleTracks.isNotEmpty;
 
@@ -181,11 +182,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return;
     }
 
-    final videoHeaders = {
+    final videoHeaders = <String, String>{
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       'Referer': 'https://narto-drama.com/',
-      'Cookie': AppSettings.customCookie ?? NartoApiService.defaultCookie,
     };
+    if (AppSettings.customCookie != null && AppSettings.customCookie!.isNotEmpty) {
+      videoHeaders['Cookie'] = AppSettings.customCookie!;
+    }
 
     VideoPlayerController? activeController;
 
@@ -193,17 +196,42 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       final clean = rawUrl.replaceAll(r'\/', '/').trim();
       if (!clean.startsWith('http')) return null;
 
+      final uri = Uri.parse(clean);
+      final isHls = clean.contains('.m3u8') ||
+          clean.contains('-stream.') ||
+          clean.contains('vigloo') ||
+          clean.contains('hls') ||
+          clean.contains('/m/') ||
+          clean.contains('/stream');
+
+      // 1. Try with detected formatHint and headers
       try {
         final c = VideoPlayerController.networkUrl(
-          Uri.parse(clean),
+          uri,
+          formatHint: isHls ? VideoFormat.hls : null,
           httpHeaders: videoHeaders,
         );
         await c.initialize();
         return c;
       } catch (_) {}
 
+      // 2. Try alternate formatHint (e.g. force HLS if standard failed)
       try {
-        final c = VideoPlayerController.networkUrl(Uri.parse(clean));
+        final c = VideoPlayerController.networkUrl(
+          uri,
+          formatHint: isHls ? null : VideoFormat.hls,
+          httpHeaders: videoHeaders,
+        );
+        await c.initialize();
+        return c;
+      } catch (_) {}
+
+      // 3. Try without headers
+      try {
+        final c = VideoPlayerController.networkUrl(
+          uri,
+          formatHint: isHls ? VideoFormat.hls : null,
+        );
         await c.initialize();
         return c;
       } catch (_) {}
@@ -212,13 +240,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     try {
-      // 1. Try effective stream url
-      activeController = await tryInitUrl(streamUrl);
-
-      // 2. Try playUrl fallback
-      if (activeController == null && ep.playUrl.isNotEmpty && ep.playUrl != streamUrl) {
+      // 1. Try playUrl first (live token/HLS stream)
+      if (ep.playUrl.isNotEmpty) {
         activeController = await tryInitUrl(ep.playUrl);
       }
+
+      // 2. Try effective stream url fallback
+      activeController ??= await tryInitUrl(streamUrl);
 
       // 3. Try directPlayUrl fallback
       if (activeController == null && ep.directPlayUrl.isNotEmpty && ep.directPlayUrl != streamUrl) {
@@ -389,6 +417,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         if (mounted) {
           setState(() {
             _subtitles = cues;
+            _activeCueIndex = -1;
           });
         }
       } catch (_) {}
@@ -508,6 +537,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
     if (isBackKey) {
       if (event is! KeyDownEvent) return KeyEventResult.handled;
+      if (_isSubtitleModalOpen) {
+        if (Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        _isSubtitleModalOpen = false;
+        _rootFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
       _onBackKeyDown();
       return KeyEventResult.handled;
     }
@@ -607,6 +644,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   void _onBackKeyDown() {
     if (_isConfirmingExit) return;
+
+    if (_isSubtitleModalOpen) {
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _isSubtitleModalOpen = false;
+      _rootFocusNode.requestFocus();
+      return;
+    }
 
     if (_showEpisodeDrawer) {
       setState(() => _showEpisodeDrawer = false);
@@ -770,13 +816,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     );
   }
 
-  void _showQuickSubtitleModal() {
+  void _showQuickSubtitleModal() async {
     _hideControlsTimer?.cancel();
-    showDialog(
+    _isSubtitleModalOpen = true;
+    await showDialog(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (dialogCtx, setDialogState) {
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) {
+              _isSubtitleModalOpen = false;
+            }
+          },
+          child: StatefulBuilder(
+            builder: (dialogCtx, setDialogState) {
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -893,12 +947,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                 _selectedTrack = track;
                                 _preferredLanguageCode = track.languageCode;
                                 _subtitlesEnabled = true;
+                                _activeCueIndex = -1;
+                                _activeSubtitleNotifier.value = '';
                                 setDialogState(() {});
                                 setState(() {});
                                 final cues = await NartoApiService.fetchSubtitles(track.subtitleUrl);
                                 if (mounted) {
                                   setState(() {
                                     _subtitles = cues;
+                                    _activeCueIndex = -1;
                                   });
                                   setDialogState(() {});
                                 }
@@ -1048,9 +1105,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
               ],
             );
           },
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
+  _isSubtitleModalOpen = false;
+    _rootFocusNode.requestFocus();
   }
 
   Widget _buildSubSizeChip(String label, double size, StateSetter setDialogState) {

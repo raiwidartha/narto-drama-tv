@@ -53,6 +53,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _firstHomeFocusNode = FocusNode();
   final FocusNode _firstHomeDramaFocusNode = FocusNode();
   final FocusNode _homeRefreshFocusNode = FocusNode();
+  final FocusNode _homeFilterFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstProviderDramaFocusNode = FocusNode();
   final FocusNode _providerSyncFocusNode = FocusNode();
@@ -91,6 +92,271 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
   }
 
+  String _getActiveMergedProviderNames() {
+    final active = AppSettings.homeMergedProviders.isNotEmpty
+        ? AppSettings.homeMergedProviders
+        : AppSettings.defaultMergedProviders;
+    final all = _providers.isNotEmpty ? _providers : AppSettings.allProviders;
+    final labels = <String>[];
+    for (final key in active) {
+      final match = all.firstWhere((p) => p.key.toLowerCase() == key.toLowerCase(),
+          orElse: () => ProviderInfo(key: key, label: key));
+      labels.add(match.label);
+    }
+    if (labels.length <= 4) {
+      return labels.join(', ');
+    }
+    return '${labels.take(3).join(', ')} +${labels.length - 3} lainnya';
+  }
+
+  int _getMergedProviderCount() {
+    return AppSettings.homeMergedProviders.isNotEmpty
+        ? AppSettings.homeMergedProviders.length
+        : AppSettings.defaultMergedProviders.length;
+  }
+
+  void _showProviderFilterModal() {
+    final availableProviders = _providers.isNotEmpty ? _providers : AppSettings.allProviders;
+    final Set<String> selectedKeys = Set<String>.from(
+      AppSettings.homeMergedProviders.isNotEmpty
+          ? AppSettings.homeMergedProviders
+          : AppSettings.defaultMergedProviders,
+    );
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFF334155)),
+              ),
+              title: Row(
+                children: [
+                  const Icon(Icons.checklist_rounded, color: Color(0xFF00E5FF), size: 24),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Pilih Provider Beranda',
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF38BDF8)),
+                    ),
+                    child: Text(
+                      '${selectedKeys.length} / ${availableProviders.length} Terpilih',
+                      style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 720,
+                height: 420,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pilih provider mana saja yang ingin digabung menjadi satu di feed Beranda:',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    // Quick Action Buttons
+                    Row(
+                      children: [
+                        TvFocusable(
+                          onPressed: () {
+                            setDialogState(() {
+                              selectedKeys.clear();
+                              selectedKeys.addAll(availableProviders.map((p) => p.key));
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          backgroundColor: const Color(0xFF1E293B),
+                          focusedBackgroundColor: const Color(0xFF0284C7),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.select_all_rounded, color: Color(0xFF38BDF8), size: 15),
+                              SizedBox(width: 6),
+                              Text('Pilih Semua', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () {
+                            setDialogState(() {
+                              selectedKeys.clear();
+                              selectedKeys.addAll(AppSettings.defaultMergedProviders);
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          backgroundColor: const Color(0xFF1E293B),
+                          focusedBackgroundColor: const Color(0xFF0284C7),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star_rounded, color: Colors.amberAccent, size: 15),
+                              SizedBox(width: 6),
+                              Text('Hanya Populer (Top 6)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () {
+                            setDialogState(() {
+                              selectedKeys.clear();
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          backgroundColor: const Color(0xFF1E293B),
+                          focusedBackgroundColor: const Color(0xFF475569),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.clear_rounded, color: Colors.white54, size: 15),
+                              SizedBox(width: 6),
+                              Text('Bersihkan', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: Colors.white12, height: 1),
+                    const SizedBox(height: 12),
+                    // Providers Checklist Grid
+                    Expanded(
+                      child: GridView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 3.4,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: availableProviders.length,
+                        itemBuilder: (context, idx) {
+                          final p = availableProviders[idx];
+                          final isChecked = selectedKeys.contains(p.key);
+                          final dramaCount = p.dramaCount > 0 ? p.dramaCount : AppSettings.getDramaCount(p.key);
+
+                          return TvFocusable(
+                            onPressed: () {
+                              setDialogState(() {
+                                if (isChecked) {
+                                  selectedKeys.remove(p.key);
+                                } else {
+                                  selectedKeys.add(p.key);
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            backgroundColor: isChecked ? const Color(0xFF1E293B) : const Color(0xFF0B132B),
+                            focusBorderColor: const Color(0xFF00E5FF),
+                            focusedBackgroundColor: isChecked ? const Color(0xFF0369A1) : const Color(0xFF1E293B),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isChecked ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                  color: isChecked ? const Color(0xFF00E5FF) : Colors.white38,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    p.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: isChecked ? Colors.white : Colors.white70,
+                                      fontSize: 13,
+                                      fontWeight: isChecked ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: isChecked ? const Color(0xFF0284C7).withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(5),
+                                    border: Border.all(
+                                      color: isChecked ? const Color(0xFF38BDF8).withValues(alpha: 0.6) : Colors.white12,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    dramaCount > 0 ? '$dramaCount drama' : '0 drama',
+                                    style: TextStyle(
+                                      color: isChecked ? const Color(0xFF38BDF8) : Colors.white54,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TvFocusable(
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: const Color(0xFF1E293B),
+                  focusedBackgroundColor: const Color(0xFF334155),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                  child: const Text('Batal', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                ),
+                TvFocusable(
+                  autofocus: true,
+                  onPressed: () async {
+                    if (selectedKeys.isEmpty) {
+                      selectedKeys.addAll(AppSettings.defaultMergedProviders);
+                    }
+                    await AppSettings.setHomeMergedProviders(selectedKeys.toList());
+                    if (context.mounted) {
+                      Navigator.of(dialogCtx).pop();
+                      _loadHomeCatalog(reset: true);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: const Color(0xFFFF2D55),
+                  focusedBackgroundColor: const Color(0xFFFF5377),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 9),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text('Terapkan & Simpan', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _loadHomeCatalog({bool reset = false}) async {
     if (_isLoadingHome) return;
     if (reset) {
@@ -109,40 +375,70 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
 
     try {
-      try {
-        final res = await NartoApiService.fetchProviderSections(
-          provider: 'all',
-          page: _homePage,
-        );
+      final activeProviders = AppSettings.homeMergedProviders.isNotEmpty
+          ? AppSettings.homeMergedProviders
+          : AppSettings.defaultMergedProviders;
+
+      // Fetch sections for all selected providers in parallel
+      final results = await Future.wait(
+        activeProviders.map((p) => NartoApiService.fetchProviderSections(
+              provider: p,
+              page: _homePage,
+            )),
+      );
+
+      final List<List<DramaItem>> providerLists = [];
+      List<ProviderInfo>? collectedProviders;
+
+      for (final res in results) {
         final sections = res['sections'] as List<ProviderSection>? ?? [];
         final apiProviders = res['providers'] as List<ProviderInfo>?;
-        final List<DramaItem> items = [];
+        if (apiProviders != null && apiProviders.isNotEmpty && collectedProviders == null) {
+          collectedProviders = apiProviders;
+        }
+        final List<DramaItem> pItems = [];
         for (final sec in sections) {
-          items.addAll(sec.items);
+          pItems.addAll(sec.items);
         }
-        final seen = <String>{};
-        final uniqueItems = <DramaItem>[];
-        for (final item in items) {
-          if (seen.add(item.historyKey)) {
-            uniqueItems.add(item);
-          }
+        if (pItems.isNotEmpty) {
+          providerLists.add(pItems);
         }
-        if (uniqueItems.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              if (apiProviders != null && apiProviders.isNotEmpty) {
-                _providers = apiProviders;
-              }
-              _homeDramas = reset ? uniqueItems : [..._homeDramas, ...uniqueItems];
-              _hasMoreHome = false;
-              _homePage++;
-              _isLoadingHome = false;
-            });
-          }
-          return;
-        }
-      } catch (_) {}
+      }
 
+      // Interleave items round-robin across selected providers
+      final List<DramaItem> mergedItems = [];
+      final seen = <String>{};
+      int maxLen = 0;
+      for (final list in providerLists) {
+        if (list.length > maxLen) maxLen = list.length;
+      }
+      for (int i = 0; i < maxLen; i++) {
+        for (final list in providerLists) {
+          if (i < list.length) {
+            final item = list[i];
+            if (seen.add(item.historyKey)) {
+              mergedItems.add(item);
+            }
+          }
+        }
+      }
+
+      if (mergedItems.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            if (collectedProviders != null && collectedProviders.isNotEmpty) {
+              _providers = collectedProviders;
+            }
+            _homeDramas = reset ? mergedItems : [..._homeDramas, ...mergedItems];
+            _hasMoreHome = false;
+            _homePage++;
+            _isLoadingHome = false;
+          });
+        }
+        return;
+      }
+
+      // Fallback: general catalog if providers returned empty
       final res = await NartoApiService.fetchGeneralCatalog(page: _homePage);
       if (mounted) {
         setState(() {
@@ -573,6 +869,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
     _homeRefreshFocusNode.dispose();
+    _homeFilterFocusNode.dispose();
     _firstProviderFocusNode.dispose();
     _firstProviderDramaFocusNode.dispose();
     _providerSyncFocusNode.dispose();
@@ -649,7 +946,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (_isHandlingBack) return;
     _isHandlingBack = true;
     try {
-      if (_selectedTabIndex == 0 && _homeRefreshFocusNode.hasFocus) {
+      if (_selectedTabIndex == 0 && (_homeRefreshFocusNode.hasFocus || _homeFilterFocusNode.hasFocus)) {
         _tabFocusNodes[0].requestFocus();
         return;
       }
@@ -896,62 +1193,109 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Beranda Drama',
                       style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Drama terpopuler dan rekomendasi pilihan terkini',
-                      style: TextStyle(color: Colors.white54, fontSize: 13),
+                      'Gabungan ${_getActiveMergedProviderNames()} • ${_homeDramas.length} drama ditampilkan',
+                      style: const TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                   ],
                 ),
               ),
-              TvFocusable(
-                focusNode: _homeRefreshFocusNode,
-                onPressed: () => _loadHomeCatalog(reset: true),
-                onKeyEvent: (node, event) {
-                  if (event is KeyDownEvent) {
-                    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                      _tabFocusNodes[0].requestFocus();
-                      return KeyEventResult.handled;
-                    }
-                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                      if (_firstHomeDramaFocusNode.canRequestFocus) {
-                        _firstHomeDramaFocusNode.requestFocus();
+              Row(
+                children: [
+                  TvFocusable(
+                    focusNode: _homeFilterFocusNode,
+                    onPressed: _showProviderFilterModal,
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                            event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _tabFocusNodes[0].requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _homeRefreshFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          if (_firstHomeDramaFocusNode.canRequestFocus) {
+                            _firstHomeDramaFocusNode.requestFocus();
+                          }
+                          return KeyEventResult.handled;
+                        }
                       }
-                      return KeyEventResult.handled;
-                    }
-                  }
-                  return KeyEventResult.ignored;
-                },
-                borderRadius: BorderRadius.circular(6),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                focusBorderColor: const Color(0xFF00E5FF),
-                backgroundColor: const Color(0xFF1E293B),
-                focusedBackgroundColor: const Color(0xFF38BDF8),
-                child: Row(
-                  children: [
-                    _isLoadingHome
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isLoadingHome ? 'Menyegarkan...' : 'Segarkan',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      return KeyEventResult.ignored;
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    focusBorderColor: const Color(0xFF00E5FF),
+                    backgroundColor: const Color(0xFF1E293B),
+                    focusedBackgroundColor: const Color(0xFF0284C7),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.tune_rounded, color: Color(0xFF38BDF8), size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Pilih Provider (${_getMergedProviderCount()})',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  TvFocusable(
+                    focusNode: _homeRefreshFocusNode,
+                    onPressed: () => _loadHomeCatalog(reset: true),
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          _tabFocusNodes[0].requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _homeFilterFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          if (_firstHomeDramaFocusNode.canRequestFocus) {
+                            _firstHomeDramaFocusNode.requestFocus();
+                          }
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    focusBorderColor: const Color(0xFF00E5FF),
+                    backgroundColor: const Color(0xFF1E293B),
+                    focusedBackgroundColor: const Color(0xFF38BDF8),
+                    child: Row(
+                      children: [
+                        _isLoadingHome
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isLoadingHome ? 'Menyegarkan...' : 'Segarkan',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1057,7 +1401,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             onKeyEvent: index < 6
                                 ? (node, event) {
                                     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                      _homeRefreshFocusNode.requestFocus();
+                                      if (index < 3) {
+                                        _homeFilterFocusNode.requestFocus();
+                                      } else {
+                                        _homeRefreshFocusNode.requestFocus();
+                                      }
                                       return KeyEventResult.handled;
                                     }
                                     return KeyEventResult.ignored;

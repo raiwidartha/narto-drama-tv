@@ -48,12 +48,15 @@ class NartoApiService {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
   static Map<String, String> get _defaultHeaders {
-    return {
+    final headers = <String, String>{
       'User-Agent': userAgent,
-      'Cookie': AppSettings.customCookie ?? defaultCookie,
       'Referer': 'https://narto-drama.com/',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
     };
+    if (AppSettings.customCookie != null && AppSettings.customCookie!.trim().isNotEmpty) {
+      headers['Cookie'] = AppSettings.customCookie!.trim();
+    }
+    return headers;
   }
 
   static final Map<String, Map<String, String>> _dramaEdgeCache = {};
@@ -609,7 +612,7 @@ class NartoApiService {
       final cleanUrl = subtitleUrl.replaceAll(r'\/', '/').replaceAll(r'\', '').trim();
       final targetUrl = cleanUrl.startsWith('http')
           ? cleanUrl
-          : 'https://narto-drama.com${cleanUrl.startsWith('/') ? '' : '/'}$cleanUrl';
+          : '$baseUrl${cleanUrl.startsWith('/') ? '' : '/'}$cleanUrl';
 
       final headers = Map<String, String>.from(_defaultHeaders);
       headers['Accept'] = 'text/vtt, text/plain;q=0.9, */*;q=0.8';
@@ -625,7 +628,7 @@ class NartoApiService {
   /// Parse WebVTT formatted string into list of SubtitleCue with gap-bridging anti-flicker
   static List<SubtitleCue> parseWebVTT(String content) {
     final List<SubtitleCue> rawCues = [];
-    final lines = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final lines = const LineSplitter().convert(content);
 
     int i = 0;
     while (i < lines.length) {
@@ -648,7 +651,7 @@ class NartoApiService {
             }
 
             if (start != null && end != null && textLines.isNotEmpty) {
-              String rawText = textLines.join(' ');
+              String rawText = textLines.join('\n');
               // Clean VTT tags like [region=...] or <c>...
               rawText = rawText.replaceAll(RegExp(r'\[region=[^\]]+\]'), '');
               rawText = rawText.replaceAll(RegExp(r'<[^>]+>'), '');
