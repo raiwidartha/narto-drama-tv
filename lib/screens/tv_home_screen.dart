@@ -1097,9 +1097,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             _firstProviderDramaFocusNode.requestFocus();
                           }
                           return KeyEventResult.handled;
-                        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                                   event.logicalKey == LogicalKeyboardKey.escape ||
-                                   event.logicalKey == LogicalKeyboardKey.goBack) {
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           _tabFocusNodes[1].requestFocus();
                           return KeyEventResult.handled;
                         }
@@ -1108,6 +1106,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     },
                     borderRadius: BorderRadius.circular(8),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    focusBorderColor: isSelected ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
                     backgroundColor: isSelected ? const Color(0xFFFF2D55) : const Color(0xFF1E293B),
                     focusedBackgroundColor: isSelected ? const Color(0xFFFF5377) : const Color(0xFF334155),
                     child: Row(
@@ -1278,15 +1277,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             focusNode: index == 0 ? _firstProviderDramaFocusNode : null,
                             onKeyEvent: (node, event) {
                               if (event is KeyDownEvent) {
-                                if (event.logicalKey == LogicalKeyboardKey.escape ||
-                                    event.logicalKey == LogicalKeyboardKey.goBack) {
-                                  if (activeChipNode.canRequestFocus) {
-                                    activeChipNode.requestFocus();
-                                  } else {
-                                    _firstProviderFocusNode.requestFocus();
-                                  }
-                                  return KeyEventResult.handled;
-                                }
                                 if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
                                   if (activeChipNode.canRequestFocus) {
                                     activeChipNode.requestFocus();
