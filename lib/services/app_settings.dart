@@ -361,28 +361,30 @@ class AppSettings {
   }
 
   /// Test connection to a given server URL
-  static Future<Map<String, dynamic>> testConnection(String targetUrl) async {
+  static Future<Map<String, dynamic>> testConnection(String targetUrl, {http.Client? client}) async {
     var cleanUrl = targetUrl.trim();
     if (cleanUrl.endsWith('/')) {
       cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
     }
     final stopwatch = Stopwatch()..start();
 
+    final httpClient = client ?? http.Client();
     try {
       final isUpstream = cleanUrl.contains('narto-drama.com');
       final testUri = isUpstream
-          ? Uri.parse('$cleanUrl/search?q=balas&limit=1&lang=id-ID')
-          : Uri.parse('$cleanUrl/api/providers');
+          ? Uri.parse('$cleanUrl/')
+          : Uri.parse('$cleanUrl/api/general?page=1');
 
-      final headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Cookie': _customCookie ?? NartoApiService.defaultCookie,
-        'Referer': 'https://narto-drama.com/',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json, text/plain, */*',
+      final headers = <String, String>{
+        'User-Agent': NartoApiService.userAgent,
+        'Referer': '$cleanUrl/',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
       };
+      if (_customCookie != null && _customCookie!.trim().isNotEmpty) {
+        headers['Cookie'] = _customCookie!.trim();
+      }
 
-      final response = await http.get(testUri, headers: headers).timeout(const Duration(seconds: 8));
+      final response = await httpClient.get(testUri, headers: headers).timeout(const Duration(seconds: 8));
       stopwatch.stop();
 
       final isSuccess = response.statusCode >= 200 && response.statusCode < 400;
@@ -402,6 +404,10 @@ class AppSettings {
         'latencyMs': stopwatch.elapsedMilliseconds,
         'message': 'Koneksi gagal: ${e.toString().replaceAll('Exception:', '').trim()}',
       };
+    } finally {
+      if (client == null) {
+        httpClient.close();
+      }
     }
   }
 }

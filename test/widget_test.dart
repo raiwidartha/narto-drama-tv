@@ -8,6 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
 import 'package:narto_drama_tv/main.dart';
 import 'package:narto_drama_tv/models/drama.dart';
 import 'package:narto_drama_tv/services/app_settings.dart';
@@ -190,6 +192,16 @@ void main() {
     expect(AppSettings.getDramaCount('vigloo'), greaterThan(0));
     expect(AppSettings.getDramaCount('anyreel'), greaterThan(0));
     expect(AppSettings.getDramaCount('shortmax'), greaterThan(0));
+  });
+
+  test('AppSettings.testConnection reaches upstream host quickly', () async {
+    final mockClient = http_testing.MockClient((request) async {
+      return http.Response('<html>OK</html>', 200);
+    });
+    final result = await AppSettings.testConnection('https://narto-drama.com', client: mockClient);
+    expect(result['success'], isTrue);
+    expect(result['statusCode'], equals(200));
+    expect(result['latencyMs'], isNonNegative);
   });
 
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
