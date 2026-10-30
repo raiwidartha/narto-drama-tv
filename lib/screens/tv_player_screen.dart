@@ -42,6 +42,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   List<SubtitleCue> _subtitles = [];
   final ValueNotifier<String> _activeSubtitleNotifier = ValueNotifier<String>('');
   int _activeCueIndex = -1;
+  List<SubtitleTrack> _availableSubtitleTracks = [];
+  SubtitleTrack? _selectedTrack;
+  String _preferredLanguageCode = 'id';
+  bool _isAutoAdvancing = false;
+
+  bool get _hasSoftsub => _availableSubtitleTracks.isNotEmpty;
 
   // Temporary seek indicator
   String _seekIndicatorText = '';
@@ -132,10 +138,38 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return;
     }
 
-    _loadSubtitlesForCurrentEpisode();
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
 
     final ep = widget.drama.episodes[_currentIndex];
-    var streamUrl = ep.effectiveStreamUrl;
+
+    // Check if episode metadata is missing subtitles or stream link; refresh detail if needed
+    if ((ep.multiSubtitles.isEmpty && ep.subtitleUrl.isEmpty && ep.directSubtitleUrl.isEmpty) ||
+        (ep.effectiveStreamUrl.isEmpty && ep.playUrl.isEmpty)) {
+      if (ep.watchUrl.isNotEmpty) {
+        try {
+          final freshDetail = await NartoApiService.fetchDramaDetail(ep.watchUrl);
+          if (freshDetail != null && freshDetail.episodes.length > _currentIndex) {
+            widget.drama.episodes[_currentIndex] = freshDetail.episodes[_currentIndex];
+          }
+        } catch (_) {}
+      }
+    }
+
+    final oldController = _controller;
+    _controller = null;
+    _cachedVideoWidget = null;
+    await oldController?.dispose();
+
+    await _loadSubtitlesForCurrentEpisode();
+
+    final currentEp = widget.drama.episodes[_currentIndex];
+    var streamUrl = currentEp.effectiveStreamUrl;
+    if (streamUrl.isEmpty && currentEp.playUrl.isNotEmpty) {
+      streamUrl = currentEp.playUrl;
+    }
 
     if (streamUrl.isEmpty) {
       setState(() {
@@ -143,18 +177,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         _hasError = true;
         _errorMessage = 'Link streaming kosong untuk episode ini';
       });
+      _isAutoAdvancing = false;
       return;
     }
-
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
-
-    final oldController = _controller;
-    _controller = null;
-    _cachedVideoWidget = null;
-    await oldController?.dispose();
 
     final videoHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -253,7 +278,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
           // Auto next episode
           if (pos >= controller.value.duration && controller.value.duration > Duration.zero) {
-            _playNextEpisode();
+            if (!_isAutoAdvancing && _currentIndex < widget.drama.episodes.length - 1) {
+              _isAutoAdvancing = true;
+              _playNextEpisode();
+            }
           }
         }
       });
@@ -270,7 +298,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           _isLoading = false;
         });
       }
+      _isAutoAdvancing = false;
     } catch (e) {
+      _isAutoAdvancing = false;
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -303,61 +333,104 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (widget.drama.episodes.isEmpty || _currentIndex >= widget.drama.episodes.length) return;
     final ep = widget.drama.episodes[_currentIndex];
 
-    String subUrl = ep.effectiveSubtitleUrl;
-    if (subUrl.isEmpty && ep.multiSubtitles.isNotEmpty) {
-      final chosen = ep.multiSubtitles.firstWhere(
-        (t) => t.languageCode.toLowerCase().startsWith('id'),
-        orElse: () => ep.multiSubtitles.firstWhere(
-          (t) => t.isDefault,
-          orElse: () => ep.multiSubtitles.first,
+    // Gather all tracks from multiSubtitles or effectiveSubtitleUrl
+    final List<SubtitleTrack> tracks = [];
+    if (ep.multiSubtitles.isNotEmpty) {
+      tracks.addAll(ep.multiSubtitles);
+    } else if (ep.effectiveSubtitleUrl.isNotEmpty) {
+      tracks.add(
+        SubtitleTrack(
+          languageCode: 'id-ID',
+          label: 'Bahasa Indonesia',
+          subtitleUrl: ep.effectiveSubtitleUrl,
+          isDefault: true,
         ),
       );
-      subUrl = chosen.subtitleUrl;
+    }
+
+    // Pick best matching track based on preference or Indonesian default
+    SubtitleTrack? chosen;
+    if (tracks.isNotEmpty) {
+      chosen = tracks.firstWhere(
+        (t) {
+          final code = t.languageCode.toLowerCase();
+          final lbl = t.label.toLowerCase();
+          final pref = _preferredLanguageCode.toLowerCase();
+          return code.startsWith(pref) || lbl.contains(pref);
+        },
+        orElse: () => tracks.firstWhere(
+          (t) {
+            final code = t.languageCode.toLowerCase();
+            final lbl = t.label.toLowerCase();
+            return code.startsWith('id') || lbl.contains('indonesia') || code.contains('ina');
+          },
+          orElse: () => tracks.firstWhere(
+            (t) => t.isDefault,
+            orElse: () => tracks.first,
+          ),
+        ),
+      );
     }
 
     _activeSubtitleNotifier.value = '';
     _activeCueIndex = -1;
-    _subtitles = [];
 
-    if (subUrl.isNotEmpty) {
-      final cues = await NartoApiService.fetchSubtitles(subUrl);
-      if (mounted) {
-        setState(() {
-          _subtitles = cues;
-        });
-      }
+    if (mounted) {
+      setState(() {
+        _availableSubtitleTracks = tracks;
+        _selectedTrack = chosen;
+        _subtitles = [];
+      });
+    }
+
+    if (chosen != null && chosen.subtitleUrl.isNotEmpty) {
+      try {
+        final cues = await NartoApiService.fetchSubtitles(chosen.subtitleUrl);
+        if (mounted) {
+          setState(() {
+            _subtitles = cues;
+          });
+        }
+      } catch (_) {}
     }
   }
 
   void _playNextEpisode() {
     if (_currentIndex < widget.drama.episodes.length - 1) {
-      setState(() {
-        _currentIndex++;
-      });
-      _savePlaybackHistory();
-      _initController();
+      _changeEpisode(_currentIndex + 1);
     }
   }
 
   void _playPreviousEpisode() {
     if (_currentIndex > 0) {
-      setState(() {
-        _currentIndex--;
-      });
-      _savePlaybackHistory();
-      _initController();
+      _changeEpisode(_currentIndex - 1);
     }
   }
 
   void _jumpToEpisode(int index) {
     if (index >= 0 && index < widget.drama.episodes.length && index != _currentIndex) {
-      setState(() {
-        _currentIndex = index;
-        _showEpisodeDrawer = false;
-      });
-      _savePlaybackHistory();
-      _initController();
+      _changeEpisode(index);
     }
+  }
+
+  Future<void> _changeEpisode(int newIndex) async {
+    if (newIndex < 0 || newIndex >= widget.drama.episodes.length) return;
+    _hideControlsTimer?.cancel();
+    setState(() {
+      _currentIndex = newIndex;
+      _showEpisodeDrawer = false;
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = '';
+      _activeSubtitleNotifier.value = '';
+      _activeCueIndex = -1;
+      _subtitles = [];
+      _availableSubtitleTracks = [];
+      _selectedTrack = null;
+    });
+    _savePlaybackHistory();
+    await _initController();
+    _isAutoAdvancing = false;
   }
 
   void _togglePlayPause({bool showHud = false}) {
@@ -707,128 +780,260 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
+              title: Row(
                 children: [
-                  Icon(Icons.tune_rounded, color: Color(0xFF38BDF8), size: 26),
-                  SizedBox(width: 10),
-                  Text('Pengaturan Cepat Takarir (Subtitle)', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  Icon(
+                    _hasSoftsub ? Icons.subtitles_rounded : Icons.subtitles_off_rounded,
+                    color: _hasSoftsub ? const Color(0xFF38BDF8) : Colors.orangeAccent,
+                    size: 26,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Pengaturan Subtitle & Takarir',
+                      style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _hasSoftsub ? const Color(0xFF065F46) : const Color(0xFF7C2D12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _hasSoftsub ? const Color(0xFF10B981) : const Color(0xFFF97316),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _hasSoftsub ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                          size: 13,
+                          color: _hasSoftsub ? const Color(0xFF34D399) : const Color(0xFFFDBA74),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _hasSoftsub
+                              ? 'Softsub (${_availableSubtitleTracks.length} Bahasa)'
+                              : 'Format Hardsub',
+                          style: TextStyle(
+                            color: _hasSoftsub ? const Color(0xFF34D399) : const Color(0xFFFDBA74),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               content: SizedBox(
-                width: 580,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Subtitle Toggle
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Tampilkan Subtitle', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                        TvFocusable(
-                          autofocus: true,
-                          onPressed: () {
-                            setState(() => _subtitlesEnabled = !_subtitlesEnabled);
-                            setDialogState(() {});
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          backgroundColor: _subtitlesEnabled ? const Color(0xFF10B981) : const Color(0xFF475569),
-                          child: Text(_subtitlesEnabled ? 'AKTIF' : 'NONAKTIF', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-
-                    // Vertical Position Nudge Stepper
-                    const Text('Atur Posisi Vertikal (Nudge Naik / Turun):', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
+                width: 600,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!_hasSoftsub) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: const Color(0xFF0F172A),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF38BDF8)),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
                           ),
-                          child: Text(
-                            '${(AppSettings.subtitleVerticalOffset * 100).toInt()}% dari atas',
-                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const Spacer(),
-                        TvFocusable(
-                          onPressed: () async {
-                            final cur = AppSettings.subtitleVerticalOffset;
-                            await AppSettings.setSubtitleVerticalOffset(cur - 0.05);
-                            setState(() {});
-                            setDialogState(() {});
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          backgroundColor: const Color(0xFF334155),
-                          focusedBackgroundColor: const Color(0xFF38BDF8),
                           child: const Row(
                             children: [
-                              Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text('Naik 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              Icon(Icons.info_rounded, color: Colors.orangeAccent, size: 24),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Drama / episode ini tidak memiliki file softsub terpisah dari server. Teks subtitle sudah tertanam permanen langsung pada video (hardsub).',
+                                  style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        TvFocusable(
-                          onPressed: () async {
-                            final cur = AppSettings.subtitleVerticalOffset;
-                            await AppSettings.setSubtitleVerticalOffset(cur + 0.05);
-                            setState(() {});
-                            setDialogState(() {});
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          backgroundColor: const Color(0xFF334155),
-                          focusedBackgroundColor: const Color(0xFF38BDF8),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text('Turun 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
-                            ],
-                          ),
+                      ] else ...[
+                        // Subtitle Toggle
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Tampilkan Softsub', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                            TvFocusable(
+                              autofocus: true,
+                              onPressed: () {
+                                setState(() => _subtitlesEnabled = !_subtitlesEnabled);
+                                setDialogState(() {});
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              backgroundColor: _subtitlesEnabled ? const Color(0xFF10B981) : const Color(0xFF475569),
+                              child: Text(_subtitlesEnabled ? 'AKTIF' : 'NONAKTIF', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        TvFocusable(
-                          onPressed: () async {
-                            await AppSettings.setSubtitleVerticalOffset(0.50);
-                            setState(() {});
-                            setDialogState(() {});
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          backgroundColor: const Color(0xFF334155),
-                          focusedBackgroundColor: const Color(0xFFFF2D55),
-                          child: const Text('50%', style: TextStyle(color: Colors.white, fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
+                        const SizedBox(height: 12),
 
-                    // Font Size Options
-                    const Text('Ukuran Font Subtitle:', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        _buildSubSizeChip('Kecil (18sp)', 18.0, setDialogState),
-                        const SizedBox(width: 8),
-                        _buildSubSizeChip('Sedang (24sp)', 24.0, setDialogState),
-                        const SizedBox(width: 8),
-                        _buildSubSizeChip('Besar (28sp)', 28.0, setDialogState),
-                        const SizedBox(width: 8),
-                        _buildSubSizeChip('Sangat Besar (34sp)', 34.0, setDialogState),
+                        // Subtitle Tracks Selection
+                        const Text('Pilih Bahasa Subtitle (Default: Indonesia):', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _availableSubtitleTracks.map((track) {
+                            final isSelected = _selectedTrack?.subtitleUrl == track.subtitleUrl;
+                            final isIndo = track.languageCode.toLowerCase().startsWith('id') ||
+                                track.label.toLowerCase().contains('indonesia') ||
+                                track.languageCode.toLowerCase().contains('ina');
+                            return TvFocusable(
+                              onPressed: () async {
+                                _selectedTrack = track;
+                                _preferredLanguageCode = track.languageCode;
+                                _subtitlesEnabled = true;
+                                setDialogState(() {});
+                                setState(() {});
+                                final cues = await NartoApiService.fetchSubtitles(track.subtitleUrl);
+                                if (mounted) {
+                                  setState(() {
+                                    _subtitles = cues;
+                                  });
+                                  setDialogState(() {});
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              backgroundColor: isSelected ? const Color(0xFF0369A1) : const Color(0xFF0F172A),
+                              focusedBackgroundColor: const Color(0xFF0284C7),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                    color: isSelected ? const Color(0xFF38BDF8) : Colors.white54,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    track.label,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : Colors.white70,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  if (isIndo) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF065F46),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: const Color(0xFF10B981)),
+                                      ),
+                                      child: const Text('Default', style: TextStyle(color: Color(0xFF34D399), fontSize: 9, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ],
-                    ),
-                  ],
+                      const Divider(color: Colors.white12, height: 24),
+
+                      // Vertical Position Nudge Stepper
+                      const Text('Atur Posisi Vertikal (Nudge Naik / Turun):', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F172A),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF38BDF8)),
+                            ),
+                            child: Text(
+                              '${(AppSettings.subtitleVerticalOffset * 100).toInt()}% dari atas',
+                              style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const Spacer(),
+                          TvFocusable(
+                            onPressed: () async {
+                              final cur = AppSettings.subtitleVerticalOffset;
+                              await AppSettings.setSubtitleVerticalOffset(cur - 0.05);
+                              setState(() {});
+                              setDialogState(() {});
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            backgroundColor: const Color(0xFF334155),
+                            focusedBackgroundColor: const Color(0xFF38BDF8),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
+                                SizedBox(width: 4),
+                                Text('Naik 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TvFocusable(
+                            onPressed: () async {
+                              final cur = AppSettings.subtitleVerticalOffset;
+                              await AppSettings.setSubtitleVerticalOffset(cur + 0.05);
+                              setState(() {});
+                              setDialogState(() {});
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            backgroundColor: const Color(0xFF334155),
+                            focusedBackgroundColor: const Color(0xFF38BDF8),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 16),
+                                SizedBox(width: 4),
+                                Text('Turun 5%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TvFocusable(
+                            onPressed: () async {
+                              await AppSettings.setSubtitleVerticalOffset(0.50);
+                              setState(() {});
+                              setDialogState(() {});
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            backgroundColor: const Color(0xFF334155),
+                            focusedBackgroundColor: const Color(0xFFFF2D55),
+                            child: const Text('50%', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+
+                      // Font Size Options
+                      const Text('Ukuran Font Subtitle:', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _buildSubSizeChip('Kecil (18sp)', 18.0, setDialogState),
+                          const SizedBox(width: 8),
+                          _buildSubSizeChip('Sedang (24sp)', 24.0, setDialogState),
+                          const SizedBox(width: 8),
+                          _buildSubSizeChip('Besar (28sp)', 28.0, setDialogState),
+                          const SizedBox(width: 8),
+                          _buildSubSizeChip('Sangat Besar (34sp)', 34.0, setDialogState),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -1304,6 +1509,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                           TvFocusable(
                             focusNode: _subtitleToggleFocusNode,
                             onPressed: () {
+                              if (!_hasSoftsub) {
+                                _showQuickSubtitleModal();
+                                return;
+                              }
                               setState(() {
                                 _subtitlesEnabled = !_subtitlesEnabled;
                               });
@@ -1329,10 +1538,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                               return KeyEventResult.ignored;
                             },
                             padding: const EdgeInsets.all(12),
-                            backgroundColor: _subtitlesEnabled ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white12,
+                            backgroundColor: (_hasSoftsub && _subtitlesEnabled)
+                                ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
+                                : Colors.white12,
                             child: Icon(
-                              _subtitlesEnabled ? Icons.subtitles_rounded : Icons.subtitles_off_rounded,
-                              color: _subtitlesEnabled ? const Color(0xFF38BDF8) : Colors.white38,
+                              (_hasSoftsub && _subtitlesEnabled)
+                                  ? Icons.subtitles_rounded
+                                  : Icons.subtitles_off_rounded,
+                              color: (_hasSoftsub && _subtitlesEnabled)
+                                  ? const Color(0xFF38BDF8)
+                                  : (_hasSoftsub ? Colors.white60 : Colors.white38),
                               size: 32,
                             ),
                           ),

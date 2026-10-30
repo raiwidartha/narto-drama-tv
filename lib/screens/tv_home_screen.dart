@@ -54,6 +54,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _firstHomeDramaFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstProviderDramaFocusNode = FocusNode();
+  final Map<String, FocusNode> _providerChipFocusNodes = {};
   final FocusNode _firstHistoryFocusNode = FocusNode();
   final FocusNode _firstBookmarkFocusNode = FocusNode();
   final FocusNode _searchInputFocusNode = FocusNode();
@@ -550,11 +551,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
   }
 
+  FocusNode _getProviderChipFocusNode(String key) {
+    final cleanKey = key.toLowerCase();
+    if (_providers.isNotEmpty && cleanKey == _providers.first.key.toLowerCase()) {
+      return _firstProviderFocusNode;
+    }
+    return _providerChipFocusNodes.putIfAbsent(cleanKey, () => FocusNode());
+  }
+
   @override
   void dispose() {
     for (final node in _tabFocusNodes) {
       node.dispose();
     }
+    for (final node in _providerChipFocusNodes.values) {
+      node.dispose();
+    }
+    _providerChipFocusNodes.clear();
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
     _firstProviderFocusNode.dispose();
@@ -632,6 +645,26 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (_isHandlingBack) return;
     _isHandlingBack = true;
     try {
+      if (_selectedTabIndex == 1) {
+        final isNavbarFocused = _tabFocusNodes[1].hasFocus;
+        final isAnyChipFocused = _providerChipFocusNodes.values.any((n) => n.hasFocus) || _firstProviderFocusNode.hasFocus;
+
+        if (!isNavbarFocused && !isAnyChipFocused) {
+          // Focus is down in drama grid or below provider chips -> return to provider chip first
+          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
+          if (activeChipNode.canRequestFocus) {
+            activeChipNode.requestFocus();
+          } else {
+            _firstProviderFocusNode.requestFocus();
+          }
+          return;
+        } else if (isAnyChipFocused) {
+          // Focus is on provider chip -> return to navbar tab Provider
+          _tabFocusNodes[1].requestFocus();
+          return;
+        }
+      }
+
       final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
       if (!isAnyTabFocused) {
         // Return focus to the currently active tab in navbar
@@ -1050,11 +1083,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               itemBuilder: (context, index) {
                 final p = _providers[index];
                 final isSelected = _selectedProviderKey.toLowerCase() == p.key.toLowerCase();
+                final chipNode = _getProviderChipFocusNode(p.key);
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 10),
                   child: TvFocusable(
-                    focusNode: index == 0 ? _firstProviderFocusNode : null,
+                    focusNode: chipNode,
                     onPressed: () => _selectProviderInProviderTab(p.key),
                     onKeyEvent: (node, event) {
                       if (event is KeyDownEvent) {
@@ -1063,7 +1097,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             _firstProviderDramaFocusNode.requestFocus();
                           }
                           return KeyEventResult.handled;
-                        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                                   event.logicalKey == LogicalKeyboardKey.escape ||
+                                   event.logicalKey == LogicalKeyboardKey.goBack) {
                           _tabFocusNodes[1].requestFocus();
                           return KeyEventResult.handled;
                         }
@@ -1236,18 +1272,32 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             );
                           }
                           final drama = _providerDramas[index];
+                          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
                           return TvDramaCard(
                             drama: drama,
                             focusNode: index == 0 ? _firstProviderDramaFocusNode : null,
-                            onKeyEvent: index < 6
-                                ? (node, event) {
-                                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                      _firstProviderFocusNode.requestFocus();
-                                      return KeyEventResult.handled;
-                                    }
-                                    return KeyEventResult.ignored;
+                            onKeyEvent: (node, event) {
+                              if (event is KeyDownEvent) {
+                                if (event.logicalKey == LogicalKeyboardKey.escape ||
+                                    event.logicalKey == LogicalKeyboardKey.goBack) {
+                                  if (activeChipNode.canRequestFocus) {
+                                    activeChipNode.requestFocus();
+                                  } else {
+                                    _firstProviderFocusNode.requestFocus();
                                   }
-                                : null,
+                                  return KeyEventResult.handled;
+                                }
+                                if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                  if (activeChipNode.canRequestFocus) {
+                                    activeChipNode.requestFocus();
+                                  } else {
+                                    _firstProviderFocusNode.requestFocus();
+                                  }
+                                  return KeyEventResult.handled;
+                                }
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             onTap: () => _openDetail(drama),
                           );
                         },

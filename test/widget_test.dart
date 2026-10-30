@@ -131,6 +131,52 @@ void main() {
     expect(find.text('Keluar'), findsOneWidget);
   });
 
+  testWidgets('Subtitle tracks and softsub detection logic test', (WidgetTester tester) async {
+    const epHardsub = EpisodeItem(
+      id: 1,
+      number: 1,
+      title: 'Episode 1',
+      playUrl: 'https://example.com/video.mp4',
+      directPlayUrl: 'https://example.com/video.mp4',
+      thumbUrl: '',
+      watchUrl: '',
+    );
+    expect(epHardsub.multiSubtitles.isEmpty, isTrue);
+    expect(epHardsub.effectiveSubtitleUrl.isEmpty, isTrue);
+
+    const epSoftsub = EpisodeItem(
+      id: 2,
+      number: 2,
+      title: 'Episode 2',
+      playUrl: 'https://example.com/video2.mp4',
+      directPlayUrl: 'https://example.com/video2.mp4',
+      thumbUrl: '',
+      watchUrl: '',
+      multiSubtitles: [
+        SubtitleTrack(
+          languageCode: 'en-US',
+          label: 'English',
+          subtitleUrl: 'https://example.com/en.vtt',
+        ),
+        SubtitleTrack(
+          languageCode: 'id-ID',
+          label: 'Bahasa Indonesia',
+          subtitleUrl: 'https://example.com/id.vtt',
+          isDefault: true,
+        ),
+      ],
+    );
+    expect(epSoftsub.multiSubtitles.length, equals(2));
+    expect(epSoftsub.effectiveSubtitleUrl, equals('https://example.com/id.vtt'));
+
+    // Check default Indonesian selection
+    final chosen = epSoftsub.multiSubtitles.firstWhere(
+      (t) => t.languageCode.toLowerCase().startsWith('id') || t.label.toLowerCase().contains('indonesia'),
+      orElse: () => epSoftsub.multiSubtitles.first,
+    );
+    expect(chosen.label, equals('Bahasa Indonesia'));
+  });
+
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const NartoDramaTvApp());
     expect(find.byType(NartoDramaTvApp), findsOneWidget);
