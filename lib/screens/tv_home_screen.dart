@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/drama.dart';
@@ -19,12 +20,29 @@ class TvHomeScreen extends StatefulWidget {
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _selectedTabIndex = 0; // 0: Home, 1: Providers, 2: History, 3: Favorites, 4: Search, 5: Settings
 
-  // Home tab state (independent feed)
+  // Home tab state (independent feed & pagination)
   List<DramaItem> _homeDramas = [];
+  List<DramaItem> _allHomeDramas = [];
   bool _isLoadingHome = false;
   String _homeError = '';
   int _homePage = 1;
+  int _homeCurrentPage = 1;
+  int _homeTotalPages = 1;
+  static const int _homePageSize = 18;
   bool _hasMoreHome = true;
+
+  // Topbar ping indicator state
+  int? _pingMs;
+  bool _isTestingPing = false;
+  bool _pingSuccess = true;
+  Timer? _pingAutoTimer;
+  final FocusNode _pingFocusNode = FocusNode();
+
+  // Home pagination focus nodes
+  final FocusNode _homePrevPageFocusNode = FocusNode();
+  final FocusNode _homeNextPageFocusNode = FocusNode();
+  final FocusNode _homeBottomPrevFocusNode = FocusNode();
+  final FocusNode _homeBottomNextFocusNode = FocusNode();
 
   // Provider tab state (independent feed)
   String _selectedProviderKey = 'melolo';
@@ -89,6 +107,34 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         }
       });
       _loadHomeCatalog(reset: true);
+      _runPingTest();
+      _pingAutoTimer?.cancel();
+      _pingAutoTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+        if (mounted) _runPingTest();
+      });
+    }
+  }
+
+  Future<void> _runPingTest() async {
+    if (_isTestingPing) return;
+    if (mounted) setState(() => _isTestingPing = true);
+    try {
+      final res = await AppSettings.testConnection(AppSettings.baseUrl);
+      if (mounted) {
+        setState(() {
+          _isTestingPing = false;
+          _pingSuccess = res['success'] == true;
+          _pingMs = res['latencyMs'] as int?;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isTestingPing = false;
+          _pingSuccess = false;
+          _pingMs = null;
+        });
+      }
     }
   }
 
@@ -357,12 +403,73 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  void _updateDisplayedHomeDramas() {
+    if (_allHomeDramas.isEmpty) {
+      _homeDramas = [];
+      return;
+    }
+    final start = (_homeCurrentPage - 1) * _homePageSize;
+    if (start >= _allHomeDramas.length) {
+      _homeDramas = [];
+      return;
+    }
+    final end = (start + _homePageSize).clamp(0, _allHomeDramas.length);
+    _homeDramas = _allHomeDramas.sublist(start, end);
+  }
+
+  Future<void> _changeHomePage(int targetPage) async {
+    if (targetPage < 1 || targetPage > _homeTotalPages) return;
+    if (targetPage == _homeCurrentPage) return;
+
+    if (_allHomeDramas.isNotEmpty) {
+      setState(() {
+        _homeCurrentPage = targetPage;
+        _updateDisplayedHomeDramas();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_firstHomeDramaFocusNode.canRequestFocus) {
+          _firstHomeDramaFocusNode.requestFocus();
+        }
+      });
+    } else {
+      // General catalog fallback
+      setState(() {
+        _homeCurrentPage = targetPage;
+        _isLoadingHome = true;
+      });
+      try {
+        final res = await NartoApiService.fetchGeneralCatalog(page: targetPage);
+        if (mounted) {
+          setState(() {
+            _homeDramas = res.items;
+            _homeTotalPages = res.totalPages;
+            _isLoadingHome = false;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_firstHomeDramaFocusNode.canRequestFocus) {
+              _firstHomeDramaFocusNode.requestFocus();
+            }
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoadingHome = false;
+            _homeError = 'Gagal memuat halaman $targetPage ($e)';
+          });
+        }
+      }
+    }
+  }
+
   Future<void> _loadHomeCatalog({bool reset = false}) async {
     if (_isLoadingHome) return;
     if (reset) {
       setState(() {
         _homePage = 1;
+        _homeCurrentPage = 1;
         _homeDramas = [];
+        _allHomeDramas = [];
         _hasMoreHome = true;
         _homeError = '';
         _isLoadingHome = true;
@@ -429,9 +536,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             if (collectedProviders != null && collectedProviders.isNotEmpty) {
               _providers = collectedProviders;
             }
-            _homeDramas = reset ? mergedItems : [..._homeDramas, ...mergedItems];
-            _hasMoreHome = false;
-            _homePage++;
+            _allHomeDramas = reset ? mergedItems : [..._allHomeDramas, ...mergedItems];
+            _homeTotalPages = (_allHomeDramas.length / _homePageSize).ceil();
+            if (_homeTotalPages < 1) _homeTotalPages = 1;
+            if (reset) _homeCurrentPage = 1;
+            if (_homeCurrentPage > _homeTotalPages) _homeCurrentPage = _homeTotalPages;
+            _updateDisplayedHomeDramas();
+            _hasMoreHome = _homeCurrentPage < _homeTotalPages;
             _isLoadingHome = false;
           });
         }
@@ -439,12 +550,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       }
 
       // Fallback: general catalog if providers returned empty
-      final res = await NartoApiService.fetchGeneralCatalog(page: _homePage);
+      final res = await NartoApiService.fetchGeneralCatalog(page: reset ? 1 : _homeCurrentPage);
       if (mounted) {
         setState(() {
-          _homeDramas = reset ? res.items : [..._homeDramas, ...res.items];
+          _allHomeDramas = [];
+          _homeDramas = res.items;
+          _homeTotalPages = res.totalPages;
+          if (_homeTotalPages < 1) _homeTotalPages = 1;
+          if (reset) _homeCurrentPage = 1;
           _hasMoreHome = res.hasNext;
-          _homePage++;
           _isLoadingHome = false;
         });
       }
@@ -866,6 +980,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       node.dispose();
     }
     _providerChipFocusNodes.clear();
+    _pingAutoTimer?.cancel();
+    _pingFocusNode.dispose();
+    _homePrevPageFocusNode.dispose();
+    _homeNextPageFocusNode.dispose();
+    _homeBottomPrevFocusNode.dispose();
+    _homeBottomNextFocusNode.dispose();
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
     _homeRefreshFocusNode.dispose();
@@ -1118,6 +1238,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             if (index < _tabFocusNodes.length - 1) {
                               _onTabChanged(index + 1);
                               return KeyEventResult.handled;
+                            } else if (index == _tabFocusNodes.length - 1) {
+                              _pingFocusNode.requestFocus();
+                              return KeyEventResult.handled;
                             }
                           } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                             if (index > 0) {
@@ -1159,6 +1282,84 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               ),
             ),
           ),
+          const SizedBox(width: 12),
+          _buildPingIndicator(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPingIndicator() {
+    Color statusColor;
+    String pingText;
+    IconData iconData;
+
+    if (_isTestingPing) {
+      statusColor = const Color(0xFF38BDF8);
+      pingText = '...';
+      iconData = Icons.sync_rounded;
+    } else if (!_pingSuccess || _pingMs == null) {
+      statusColor = const Color(0xFFEF4444);
+      pingText = 'Offline';
+      iconData = Icons.wifi_off_rounded;
+    } else if (_pingMs! < 500) {
+      statusColor = const Color(0xFF10B981);
+      pingText = '${_pingMs}ms';
+      iconData = Icons.wifi_rounded;
+    } else if (_pingMs! < 1000) {
+      statusColor = const Color(0xFFF59E0B);
+      pingText = '${_pingMs}ms';
+      iconData = Icons.wifi_rounded;
+    } else {
+      statusColor = const Color(0xFFEF4444);
+      pingText = '${_pingMs}ms';
+      iconData = Icons.wifi_rounded;
+    }
+
+    return TvFocusable(
+      focusNode: _pingFocusNode,
+      onPressed: _runPingTest,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent || event is KeyRepeatEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            if (_tabFocusNodes.isNotEmpty) {
+              _tabFocusNodes.last.requestFocus();
+            }
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            _focusTabContent(_selectedTabIndex);
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      borderRadius: BorderRadius.circular(8),
+      backgroundColor: const Color(0xFF1E293B),
+      focusedBackgroundColor: const Color(0xFF334155),
+      focusBorderColor: statusColor,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isTestingPing)
+            SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(strokeWidth: 2, color: statusColor),
+            )
+          else
+            Icon(iconData, size: 14, color: statusColor),
+          const SizedBox(width: 6),
+          Text(
+            pingText,
+            style: TextStyle(
+              color: statusColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 0.3,
+            ),
+          ),
         ],
       ),
     );
@@ -1192,10 +1393,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Beranda Drama',
@@ -1203,13 +1406,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Gabungan ${_getActiveMergedProviderNames()} • ${_homeDramas.length} drama ditampilkan',
+                      'Gabungan ${_getActiveMergedProviderNames()} • Halaman $_homeCurrentPage dari $_homeTotalPages (${_allHomeDramas.isNotEmpty ? _allHomeDramas.length : _homeDramas.length} drama)',
                       style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 16),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   TvFocusable(
                     focusNode: _homeFilterFocusNode,
@@ -1264,6 +1471,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           _homeFilterFocusNode.requestFocus();
                           return KeyEventResult.handled;
                         }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _homePrevPageFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                         if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           if (_firstHomeDramaFocusNode.canRequestFocus) {
                             _firstHomeDramaFocusNode.requestFocus();
@@ -1295,6 +1506,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  _buildHomeHeaderPagination(),
                 ],
               ),
             ],
@@ -1303,118 +1516,330 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           Expanded(
             child: _isLoadingHome && _homeDramas.isEmpty
                 ? Center(
-                    child: TvFocusable(
-                      focusNode: _firstHomeFocusNode,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                          _tabFocusNodes[0].requestFocus();
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: Color(0xFFFF2D55)),
-                          SizedBox(height: 16),
-                          Text(
-                            'Memuat drama beranda...',
-                            style: TextStyle(color: Colors.white70, fontSize: 14),
-                          ),
-                        ],
+                    child: SingleChildScrollView(
+                      child: TvFocusable(
+                        focusNode: _firstHomeFocusNode,
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            _tabFocusNodes[0].requestFocus();
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFFFF2D55)),
+                            SizedBox(height: 16),
+                            Text(
+                              'Memuat drama beranda...',
+                              style: TextStyle(color: Colors.white70, fontSize: 14),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   )
                 : _homeDramas.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.inbox_outlined, color: Colors.white24, size: 56),
-                            const SizedBox(height: 12),
-                            Text(
-                              _homeError.isNotEmpty ? _homeError : 'Belum ada drama ditemukan di beranda',
-                              style: const TextStyle(color: Colors.white54, fontSize: 14),
-                            ),
-                            const SizedBox(height: 16),
-                            TvFocusable(
-                              focusNode: _firstHomeFocusNode,
-                              onPressed: () => _loadHomeCatalog(reset: true),
-                              borderRadius: BorderRadius.circular(8),
-                              backgroundColor: const Color(0xFF1E293B),
-                              focusedBackgroundColor: const Color(0xFFFF2D55),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.refresh, color: Colors.white, size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Muat Ulang',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.inbox_outlined, color: Colors.white24, size: 56),
+                              const SizedBox(height: 12),
+                              Text(
+                                _homeError.isNotEmpty ? _homeError : 'Belum ada drama ditemukan di beranda',
+                                style: const TextStyle(color: Colors.white54, fontSize: 14),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : GridView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6,
-                          childAspectRatio: 0.68,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                        ),
-                        itemCount: _homeDramas.length + (_hasMoreHome ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index == _homeDramas.length) {
-                            return Center(
-                              child: TvFocusable(
-                                onPressed: () => _loadHomeCatalog(reset: false),
-                                borderRadius: BorderRadius.circular(10),
+                              const SizedBox(height: 16),
+                              TvFocusable(
+                                focusNode: _firstHomeFocusNode,
+                                onPressed: () => _loadHomeCatalog(reset: true),
+                                borderRadius: BorderRadius.circular(8),
                                 backgroundColor: const Color(0xFF1E293B),
                                 focusedBackgroundColor: const Color(0xFFFF2D55),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                                child: _isLoadingHome
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.expand_more_rounded, color: Colors.white, size: 28),
-                                          SizedBox(height: 4),
-                                          Text('Muat Lagi', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.refresh, color: Colors.white, size: 18),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Muat Ulang',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            );
-                          }
-                          final drama = _homeDramas[index];
-                          return TvDramaCard(
-                            drama: drama,
-                            focusNode: index == 0 ? _firstHomeDramaFocusNode : null,
-                            onKeyEvent: index < 6
-                                ? (node, event) {
-                                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                      if (index < 3) {
-                                        _homeFilterFocusNode.requestFocus();
-                                      } else {
-                                        _homeRefreshFocusNode.requestFocus();
+                            ],
+                          ),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: GridView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 6,
+                                childAspectRatio: 0.68,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                              ),
+                              itemCount: _homeDramas.length,
+                              itemBuilder: (context, index) {
+                                final drama = _homeDramas[index];
+                                final isTopRow = index < 6;
+                                final isBottomRow = index >= (_homeDramas.length - 6);
+
+                                return TvDramaCard(
+                                  drama: drama,
+                                  focusNode: index == 0 ? _firstHomeDramaFocusNode : null,
+                                  onKeyEvent: (node, event) {
+                                    if (event is KeyDownEvent) {
+                                      if (event.logicalKey == LogicalKeyboardKey.arrowUp && isTopRow) {
+                                        if (index < 2) {
+                                          _homeFilterFocusNode.requestFocus();
+                                        } else if (index < 4) {
+                                          _homeRefreshFocusNode.requestFocus();
+                                        } else if (index < 5) {
+                                          _homePrevPageFocusNode.requestFocus();
+                                        } else {
+                                          _homeNextPageFocusNode.requestFocus();
+                                        }
+                                        return KeyEventResult.handled;
                                       }
-                                      return KeyEventResult.handled;
+                                      if (event.logicalKey == LogicalKeyboardKey.arrowDown && isBottomRow) {
+                                        if (_homeTotalPages > 1) {
+                                          if (index % 6 < 3) {
+                                            _homeBottomPrevFocusNode.requestFocus();
+                                          } else {
+                                            _homeBottomNextFocusNode.requestFocus();
+                                          }
+                                          return KeyEventResult.handled;
+                                        }
+                                      }
                                     }
                                     return KeyEventResult.ignored;
-                                  }
-                                : null,
-                            onTap: () => _openDetail(drama),
-                          );
-                        },
+                                  },
+                                  onTap: () => _openDetail(drama),
+                                );
+                              },
+                            ),
+                          ),
+                          _buildHomeBottomPagination(),
+                        ],
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeHeaderPagination() {
+    final canPrev = _homeCurrentPage > 1;
+    final canNext = _homeCurrentPage < _homeTotalPages;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF334155), width: 1),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TvFocusable(
+            focusNode: _homePrevPageFocusNode,
+            onPressed: canPrev ? () => _changeHomePage(_homeCurrentPage - 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _homeRefreshFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _homeNextPageFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  _tabFocusNodes[0].requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                    _firstHomeDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            backgroundColor: Colors.transparent,
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            child: Icon(
+              Icons.chevron_left_rounded,
+              color: canPrev ? Colors.white : Colors.white24,
+              size: 18,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              'Hal $_homeCurrentPage / $_homeTotalPages',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          TvFocusable(
+            focusNode: _homeNextPageFocusNode,
+            onPressed: canNext ? () => _changeHomePage(_homeCurrentPage + 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _homePrevPageFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  _tabFocusNodes[0].requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                    _firstHomeDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            backgroundColor: Colors.transparent,
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            child: Icon(
+              Icons.chevron_right_rounded,
+              color: canNext ? Colors.white : Colors.white24,
+              size: 18,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeBottomPagination() {
+    if (_homeTotalPages <= 1 && _allHomeDramas.length <= _homePageSize) {
+      return const SizedBox.shrink();
+    }
+    final canPrev = _homeCurrentPage > 1;
+    final canNext = _homeCurrentPage < _homeTotalPages;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TvFocusable(
+            focusNode: _homeBottomPrevFocusNode,
+            onPressed: canPrev ? () => _changeHomePage(_homeCurrentPage - 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _homeBottomNextFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                    _firstHomeDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: canPrev ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.arrow_back_rounded, size: 16, color: canPrev ? Colors.white : Colors.white24),
+                const SizedBox(width: 8),
+                Text(
+                  'Halaman Sebelumnya',
+                  style: TextStyle(
+                    color: canPrev ? Colors.white : Colors.white24,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Text(
+              'Halaman $_homeCurrentPage dari $_homeTotalPages (${_allHomeDramas.isNotEmpty ? _allHomeDramas.length : _homeDramas.length} Drama)',
+              style: const TextStyle(
+                color: Color(0xFF38BDF8),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          TvFocusable(
+            focusNode: _homeBottomNextFocusNode,
+            onPressed: canNext ? () => _changeHomePage(_homeCurrentPage + 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _homeBottomPrevFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                    _firstHomeDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: canNext ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Halaman Berikutnya',
+                  style: TextStyle(
+                    color: canNext ? Colors.white : Colors.white24,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.arrow_forward_rounded, size: 16, color: canNext ? Colors.white : Colors.white24),
+              ],
+            ),
           ),
         ],
       ),

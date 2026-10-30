@@ -542,7 +542,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           Navigator.of(context, rootNavigator: true).pop();
         }
         _isSubtitleModalOpen = false;
-        _rootFocusNode.requestFocus();
+        _showHudTemporarily(persistent: false);
+        _subtitleSettingsFocusNode.requestFocus();
         return KeyEventResult.handled;
       }
       _onBackKeyDown();
@@ -598,6 +599,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         return KeyEventResult.handled;
       }
 
+      // If somehow _rootFocusNode holds focus while controls are visible,
+      // redirect arrows to the mid overlay buttons!
+      if (_rootFocusNode.hasFocus) {
+        if (key == LogicalKeyboardKey.arrowLeft) {
+          _subtitleToggleFocusNode.requestFocus();
+          _showHudTemporarily(persistent: false);
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.arrowRight) {
+          _subtitleSettingsFocusNode.requestFocus();
+          _showHudTemporarily(persistent: false);
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.select ||
+            key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.space ||
+            key == LogicalKeyboardKey.gameButtonA ||
+            key == LogicalKeyboardKey.gameButtonSelect) {
+          _playPauseFocusNode.requestFocus();
+          _showHudTemporarily(persistent: false);
+          return KeyEventResult.handled;
+        }
+      }
+
       // Any remote interaction while controls are up resets the hide timer
       _showHudTemporarily(persistent: false);
       return KeyEventResult.ignored;
@@ -650,7 +675,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         Navigator.of(context, rootNavigator: true).pop();
       }
       _isSubtitleModalOpen = false;
-      _rootFocusNode.requestFocus();
+      _showHudTemporarily(persistent: false);
+      _subtitleSettingsFocusNode.requestFocus();
       return;
     }
 
@@ -756,9 +782,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
   }
 
-  void _showSynopsisModal() {
+  void _showSynopsisModal() async {
     _hideControlsTimer?.cancel();
-    showDialog(
+    await showDialog(
       context: context,
       builder: (ctx) {
         final desc = widget.drama.description;
@@ -814,9 +840,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         );
       },
     );
+    _showHudTemporarily(persistent: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _playerSynopsisBtnFocusNode.requestFocus();
+    });
   }
 
-  void _showQuickSubtitleModal() async {
+  void _showQuickSubtitleModal({FocusNode? returnFocus}) async {
+    final targetFocus = returnFocus ?? _subtitleSettingsFocusNode;
     _hideControlsTimer?.cancel();
     _isSubtitleModalOpen = true;
     await showDialog(
@@ -827,6 +858,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) {
               _isSubtitleModalOpen = false;
+              _showHudTemporarily(persistent: false);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) targetFocus.requestFocus();
+              });
             }
           },
           child: StatefulBuilder(
@@ -1110,8 +1145,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     },
   );
   _isSubtitleModalOpen = false;
-    _rootFocusNode.requestFocus();
-  }
+  _showHudTemporarily(persistent: false);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted) targetFocus.requestFocus();
+  });
+}
 
   Widget _buildSubSizeChip(String label, double size, StateSetter setDialogState) {
     final isSelected = AppSettings.subtitleFontSize == size;
@@ -1570,12 +1608,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             focusNode: _subtitleToggleFocusNode,
                             onPressed: () {
                               if (!_hasSoftsub) {
-                                _showQuickSubtitleModal();
+                                _showQuickSubtitleModal(returnFocus: _subtitleToggleFocusNode);
                                 return;
                               }
                               setState(() {
                                 _subtitlesEnabled = !_subtitlesEnabled;
                               });
+                              _showHudTemporarily(persistent: false);
                             },
                             onKeyEvent: (node, event) {
                               if (event is! KeyDownEvent) return KeyEventResult.ignored;
