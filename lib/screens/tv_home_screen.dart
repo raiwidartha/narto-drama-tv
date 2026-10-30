@@ -52,8 +52,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // Dedicated remote entry focus nodes
   final FocusNode _firstHomeFocusNode = FocusNode();
   final FocusNode _firstHomeDramaFocusNode = FocusNode();
+  final FocusNode _homeRefreshFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstProviderDramaFocusNode = FocusNode();
+  final FocusNode _providerSyncFocusNode = FocusNode();
   final Map<String, FocusNode> _providerChipFocusNodes = {};
   final FocusNode _firstHistoryFocusNode = FocusNode();
   final FocusNode _firstBookmarkFocusNode = FocusNode();
@@ -570,8 +572,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _providerChipFocusNodes.clear();
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
+    _homeRefreshFocusNode.dispose();
     _firstProviderFocusNode.dispose();
     _firstProviderDramaFocusNode.dispose();
+    _providerSyncFocusNode.dispose();
     _firstHistoryFocusNode.dispose();
     _firstBookmarkFocusNode.dispose();
     _searchInputFocusNode.dispose();
@@ -645,7 +649,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (_isHandlingBack) return;
     _isHandlingBack = true;
     try {
+      if (_selectedTabIndex == 0 && _homeRefreshFocusNode.hasFocus) {
+        _tabFocusNodes[0].requestFocus();
+        return;
+      }
+
       if (_selectedTabIndex == 1) {
+        if (_providerSyncFocusNode.hasFocus) {
+          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
+          if (activeChipNode.canRequestFocus) {
+            activeChipNode.requestFocus();
+          } else {
+            _firstProviderFocusNode.requestFocus();
+          }
+          return;
+        }
+
         final isNavbarFocused = _tabFocusNodes[1].hasFocus;
         final isAnyChipFocused = _providerChipFocusNodes.values.any((n) => n.hasFocus) || _firstProviderFocusNode.hasFocus;
 
@@ -894,18 +913,42 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 ),
               ),
               TvFocusable(
+                focusNode: _homeRefreshFocusNode,
                 onPressed: () => _loadHomeCatalog(reset: true),
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _tabFocusNodes[0].requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      if (_firstHomeDramaFocusNode.canRequestFocus) {
+                        _firstHomeDramaFocusNode.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
                 borderRadius: BorderRadius.circular(6),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                focusBorderColor: const Color(0xFF00E5FF),
                 backgroundColor: const Color(0xFF1E293B),
                 focusedBackgroundColor: const Color(0xFF38BDF8),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 16),
-                    SizedBox(width: 8),
+                    _isLoadingHome
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 16),
+                    const SizedBox(width: 8),
                     Text(
-                      'Segarkan',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      _isLoadingHome ? 'Menyegarkan...' : 'Segarkan',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -1014,7 +1057,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             onKeyEvent: index < 6
                                 ? (node, event) {
                                     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                      _tabFocusNodes[0].requestFocus();
+                                      _homeRefreshFocusNode.requestFocus();
                                       return KeyEventResult.handled;
                                     }
                                     return KeyEventResult.ignored;
@@ -1047,9 +1090,30 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 ),
               ),
               TvFocusable(
+                focusNode: _providerSyncFocusNode,
                 onPressed: _syncProvidersManual,
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _tabFocusNodes[1].requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
+                      if (activeChipNode.canRequestFocus) {
+                        activeChipNode.requestFocus();
+                      } else {
+                        _firstProviderFocusNode.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
                 borderRadius: BorderRadius.circular(6),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                focusBorderColor: const Color(0xFF00E5FF),
                 backgroundColor: const Color(0xFF1E293B),
                 focusedBackgroundColor: const Color(0xFF38BDF8),
                 child: Row(
@@ -1098,7 +1162,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           }
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                          _tabFocusNodes[1].requestFocus();
+                          _providerSyncFocusNode.requestFocus();
                           return KeyEventResult.handled;
                         }
                       }
