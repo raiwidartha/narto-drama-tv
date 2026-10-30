@@ -53,18 +53,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   // TV focus node for root key interception
   final FocusNode _rootFocusNode = FocusNode();
+  final FocusNode _prevEpFocusNode = FocusNode();
+  final FocusNode _rewindFocusNode = FocusNode();
   final FocusNode _playPauseFocusNode = FocusNode();
-  final FocusNode _seekBarFocusNode = FocusNode();
-
-  // Hold-to-exit states
-  Timer? _backHoldTimer;
-  Timer? _backHoldProgressTimer;
-  DateTime? _backHoldStartTime;
-  int _backRepeatCount = 0;
-  bool _isHoldingBack = false;
-  double _holdBackProgress = 0.0;
-  bool _showHoldHint = false;
-  Timer? _holdHintTimer;
+  final FocusNode _forwardFocusNode = FocusNode();
+  final FocusNode _nextEpFocusNode = FocusNode();
+  final FocusNode _subtitleToggleFocusNode = FocusNode();
+  final FocusNode _subtitleSettingsFocusNode = FocusNode();
+  final FocusNode _playerBackBtnFocusNode = FocusNode();
+  final FocusNode _playerSynopsisBtnFocusNode = FocusNode();
 
   void _openEpisodeDrawer() {
     _hideControlsTimer?.cancel();
@@ -92,8 +89,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialEpisodeIndex;
-    _seekBarFocusNode.addListener(_onFocusChanged);
-    _playPauseFocusNode.addListener(_onFocusChanged);
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     _initController();
     _savePlaybackHistory();
@@ -103,12 +98,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (!mounted) return false;
     final res = _handleTvKeyEvent(_rootFocusNode, event);
     return res == KeyEventResult.handled;
-  }
-
-  void _onFocusChanged() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   void _savePlaybackHistory() {
@@ -413,19 +402,28 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   void _showHudTemporarily({bool persistent = false}) {
     _hideControlsTimer?.cancel();
-    setState(() {
-      _showControls = true;
-    });
+    if (!_showControls) {
+      setState(() {
+        _showControls = true;
+      });
+    }
     if (!persistent) {
       _hideControlsTimer = Timer(const Duration(seconds: 5), () {
         if (mounted && (_controller?.value.isPlaying ?? false)) {
-          setState(() {
-            _showControls = false;
-          });
-          _rootFocusNode.requestFocus();
+          _dismissControls();
         }
       });
     }
+  }
+
+  void _dismissControls() {
+    _hideControlsTimer?.cancel();
+    if (_showControls) {
+      setState(() {
+        _showControls = false;
+      });
+    }
+    _rootFocusNode.requestFocus();
   }
 
   KeyEventResult _handleTvKeyEvent(FocusNode node, KeyEvent event) {
@@ -436,13 +434,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         key == LogicalKeyboardKey.gameButtonB;
 
     if (isBackKey) {
-      if (event is KeyDownEvent) {
-        _onBackKeyDown();
-      } else if (event is KeyRepeatEvent) {
-        _onBackKeyRepeat();
-      } else if (event is KeyUpEvent) {
-        _onBackKeyUp();
-      }
+      if (event is! KeyDownEvent) return KeyEventResult.handled;
+      _onBackKeyDown();
       return KeyEventResult.handled;
     }
 
@@ -491,11 +484,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     // If HUD Controls are showing, pressing DOWN immediately hides the controls!
     if (_showControls) {
       if (key == LogicalKeyboardKey.arrowDown) {
-        _hideControlsTimer?.cancel();
-        setState(() {
-          _showControls = false;
-        });
-        _rootFocusNode.requestFocus();
+        _dismissControls();
         return KeyEventResult.handled;
       }
 
@@ -553,103 +542,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     if (_showControls) {
-      _hideControlsTimer?.cancel();
-      setState(() => _showControls = false);
-      _rootFocusNode.requestFocus();
+      _dismissControls();
       return;
     }
 
-    // Clean playback: require holding Back for 500ms
-    if (_backHoldStartTime == null) {
-      _backHoldStartTime = DateTime.now();
-      _backRepeatCount = 0;
-      setState(() {
-        _isHoldingBack = true;
-        _holdBackProgress = 0.0;
-        _showHoldHint = false;
-      });
-      _holdHintTimer?.cancel();
-
-      _backHoldProgressTimer?.cancel();
-      _backHoldProgressTimer = Timer.periodic(const Duration(milliseconds: 20), (t) {
-        if (!mounted || _backHoldStartTime == null) {
-          t.cancel();
-          return;
-        }
-        final elapsed = DateTime.now().difference(_backHoldStartTime!).inMilliseconds;
-        final progress = (elapsed / 500.0).clamp(0.0, 1.0);
-        setState(() {
-          _holdBackProgress = progress;
-        });
-        if (elapsed >= 500) {
-          t.cancel();
-          _triggerHoldExit();
-        }
-      });
-
-      _backHoldTimer?.cancel();
-      _backHoldTimer = Timer(const Duration(milliseconds: 500), () {
-        _triggerHoldExit();
-      });
-    }
-  }
-
-  void _onBackKeyRepeat() {
-    if (_isHoldingBack) {
-      _backRepeatCount++;
-      final elapsed = _backHoldStartTime != null
-          ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
-          : 0;
-      if (_backRepeatCount >= 1 || elapsed >= 300) {
-        _triggerHoldExit();
-      }
-    }
-  }
-
-  void _onBackKeyUp() {
-    if (_isHoldingBack) {
-      final elapsed = _backHoldStartTime != null
-          ? DateTime.now().difference(_backHoldStartTime!).inMilliseconds
-          : 0;
-      final wasHeld = _backRepeatCount >= 1 || elapsed >= 450;
-      _cancelBackHold();
-      if (!wasHeld && !_isConfirmingExit) {
-        _showHoldBackHint();
-      }
-    }
-  }
-
-  void _cancelBackHold() {
-    _backHoldTimer?.cancel();
-    _backHoldTimer = null;
-    _backHoldProgressTimer?.cancel();
-    _backHoldProgressTimer = null;
-    _backHoldStartTime = null;
-    _backRepeatCount = 0;
-    if (_isHoldingBack) {
-      setState(() {
-        _isHoldingBack = false;
-        _holdBackProgress = 0.0;
-      });
-    }
-  }
-
-  void _showHoldBackHint() {
-    _holdHintTimer?.cancel();
-    setState(() {
-      _showHoldHint = true;
-    });
-    _holdHintTimer = Timer(const Duration(milliseconds: 2000), () {
-      if (mounted) {
-        setState(() {
-          _showHoldHint = false;
-        });
-      }
-    });
-  }
-
-  void _triggerHoldExit() {
-    _cancelBackHold();
+    // Clean playback: single press Back directly opens exit confirmation dialog!
     _confirmExitPlayer();
   }
 
@@ -981,20 +878,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     for (final node in _episodeFocusNodes.values) {
       node.dispose();
     }
-    _seekBarFocusNode.removeListener(_onFocusChanged);
-    _playPauseFocusNode.removeListener(_onFocusChanged);
     _hideControlsTimer?.cancel();
     _seekIndicatorTimer?.cancel();
-    _backHoldTimer?.cancel();
-    _backHoldProgressTimer?.cancel();
-    _holdHintTimer?.cancel();
     _activeSubtitleNotifier.dispose();
     _controller?.dispose();
     _controller = null;
     _cachedVideoWidget = null;
-    _rootFocusNode.dispose();
+    _prevEpFocusNode.dispose();
+    _rewindFocusNode.dispose();
     _playPauseFocusNode.dispose();
-    _seekBarFocusNode.dispose();
+    _forwardFocusNode.dispose();
+    _nextEpFocusNode.dispose();
+    _subtitleToggleFocusNode.dispose();
+    _subtitleSettingsFocusNode.dispose();
+    _playerBackBtnFocusNode.dispose();
+    _playerSynopsisBtnFocusNode.dispose();
+    _rootFocusNode.dispose();
     WakelockPlus.disable();
     super.dispose();
   }
@@ -1015,18 +914,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_showEpisodeDrawer) {
-          setState(() => _showEpisodeDrawer = false);
-          _rootFocusNode.requestFocus();
-          return;
-        }
-        if (_showControls) {
-          _hideControlsTimer?.cancel();
-          setState(() => _showControls = false);
-          _rootFocusNode.requestFocus();
-          return;
-        }
-        _showHoldBackHint();
+        _onBackKeyDown();
       },
       child: Focus(
         focusNode: _rootFocusNode,
@@ -1174,7 +1062,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         child: Row(
                           children: [
                             TvFocusable(
+                              focusNode: _playerBackBtnFocusNode,
                               onPressed: _confirmExitPlayer,
+                              onKeyEvent: (node, event) {
+                                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                  _playerSynopsisBtnFocusNode.requestFocus();
+                                  return KeyEventResult.handled;
+                                }
+                                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                  _playPauseFocusNode.requestFocus();
+                                  return KeyEventResult.handled;
+                                }
+                                return KeyEventResult.ignored;
+                              },
                               padding: const EdgeInsets.all(8),
                               backgroundColor: Colors.white12,
                               child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
@@ -1200,7 +1101,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             ),
                             const SizedBox(width: 12),
                             TvFocusable(
+                              focusNode: _playerSynopsisBtnFocusNode,
                               onPressed: _showSynopsisModal,
+                              onKeyEvent: (node, event) {
+                                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                  _playerBackBtnFocusNode.requestFocus();
+                                  return KeyEventResult.handled;
+                                }
+                                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                  _forwardFocusNode.requestFocus();
+                                  return KeyEventResult.handled;
+                                }
+                                return KeyEventResult.ignored;
+                              },
                               borderRadius: BorderRadius.circular(6),
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                               backgroundColor: Colors.white12,
@@ -1218,13 +1132,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         ),
                       ),
 
-                      // Center HUD Buttons (Prev, Play/Pause, Next, Subtitle, Synopsis)
+                      // Center HUD Buttons (Prev, Rewind, Play/Pause, Forward, Next, Subtitle, Settings)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           // Prev Episode
                           TvFocusable(
+                            focusNode: _prevEpFocusNode,
                             onPressed: _currentIndex > 0 ? _playPreviousEpisode : null,
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _rewindFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerBackBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: Colors.white12,
                             child: Icon(
@@ -1237,7 +1168,28 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
                           // Rewind 10s
                           TvFocusable(
+                            focusNode: _rewindFocusNode,
                             onPressed: () => _seekBy(-10),
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _playPauseFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _prevEpFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerBackBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: Colors.white12,
                             child: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 32),
@@ -1245,29 +1197,69 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                           const SizedBox(width: 20),
 
                           // Play / Pause
-                          ValueListenableBuilder<VideoPlayerValue>(
-                            valueListenable: _controller!,
-                            builder: (context, val, child) {
-                              final isPlaying = val.isPlaying;
-                              return TvFocusable(
-                                focusNode: _playPauseFocusNode,
-                                autofocus: true,
-                                onPressed: _togglePlayPause,
-                                padding: const EdgeInsets.all(16),
-                                backgroundColor: const Color(0xFFFF2D55),
-                                child: Icon(
+                          TvFocusable(
+                            focusNode: _playPauseFocusNode,
+                            onPressed: _togglePlayPause,
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _forwardFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _rewindFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerBackBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
+                            padding: const EdgeInsets.all(16),
+                            backgroundColor: const Color(0xFFFF2D55),
+                            child: ValueListenableBuilder<VideoPlayerValue>(
+                              valueListenable: _controller!,
+                              builder: (context, val, child) {
+                                final isPlaying = val.isPlaying;
+                                return Icon(
                                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                   color: Colors.white,
                                   size: 40,
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
                           const SizedBox(width: 20),
 
                           // Forward 10s
                           TvFocusable(
+                            focusNode: _forwardFocusNode,
                             onPressed: () => _seekBy(10),
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _nextEpFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _playPauseFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerSynopsisBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: Colors.white12,
                             child: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 32),
@@ -1276,7 +1268,28 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
                           // Next Episode
                           TvFocusable(
+                            focusNode: _nextEpFocusNode,
                             onPressed: _currentIndex < widget.drama.episodes.length - 1 ? _playNextEpisode : null,
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _subtitleToggleFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _forwardFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerSynopsisBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: Colors.white12,
                             child: Icon(
@@ -1289,10 +1302,31 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
                           // Subtitle Toggle
                           TvFocusable(
+                            focusNode: _subtitleToggleFocusNode,
                             onPressed: () {
                               setState(() {
                                 _subtitlesEnabled = !_subtitlesEnabled;
                               });
+                            },
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                _subtitleSettingsFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _nextEpFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerSynopsisBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
                             },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: _subtitlesEnabled ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white12,
@@ -1306,7 +1340,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
                           // Quick Subtitle Settings (Offset & Font Size)
                           TvFocusable(
+                            focusNode: _subtitleSettingsFocusNode,
                             onPressed: _showQuickSubtitleModal,
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                _subtitleToggleFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                _playerSynopsisBtnFocusNode.requestFocus();
+                                return KeyEventResult.handled;
+                              }
+                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                _dismissControls();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             padding: const EdgeInsets.all(12),
                             backgroundColor: Colors.white12,
                             focusedBackgroundColor: const Color(0xFF38BDF8),
@@ -1506,88 +1557,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                 ),
               ),
 
-            // Hold Back Progress Overlay (Top-Right Pill)
-            if (_isHoldingBack)
-              Positioned(
-                top: 40,
-                right: 40,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xE60F172A),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: const Color(0xFFFF2D55), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0x66FF2D55),
-                        blurRadius: 16,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          value: _holdBackProgress,
-                          strokeWidth: 3,
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF2D55)),
-                          backgroundColor: Colors.white24,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      const Text(
-                        'Tahan tombol Kembali untuk keluar...',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Tap Back Hint Overlay (Top-Right Toast)
-            if (_showHoldHint && !_isHoldingBack && !_showControls && !_showEpisodeDrawer)
-              Positioned(
-                top: 40,
-                right: 40,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xE60F172A),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white24, width: 1),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black54,
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.info_outline_rounded, color: Color(0xFF38BDF8), size: 18),
-                      SizedBox(width: 10),
-                      Text(
-                        'Tahan tombol Kembali untuk keluar',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ),

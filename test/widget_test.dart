@@ -98,27 +98,27 @@ void main() {
     expect(pressCount, equals(1));
   });
 
-  testWidgets('Hold-to-exit indicator UI renders correctly', (WidgetTester tester) async {
+  testWidgets('Player exit confirmation dialog UI renders correctly', (WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: Stack(
-            children: [
-              Positioned(
-                top: 40,
-                right: 40,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(value: 0.5),
-                    ),
-                    SizedBox(width: 14),
-                    Text('Tahan tombol Kembali untuk keluar...'),
-                  ],
-                ),
+          body: AlertDialog(
+            backgroundColor: const Color(0xFF0F172A),
+            title: const Text('Keluar Menonton?'),
+            content: const Text('Apakah Anda yakin ingin keluar dari pemutar drama?'),
+            actions: [
+              TvFocusable(
+                autofocus: true,
+                onPressed: () {},
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                backgroundColor: Colors.white12,
+                child: const Text('Lanjut Menonton'),
+              ),
+              TvFocusable(
+                onPressed: () {},
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                backgroundColor: const Color(0xFFFF2D55),
+                child: const Text('Keluar'),
               ),
             ],
           ),
@@ -126,8 +126,9 @@ void main() {
       ),
     );
 
-    expect(find.text('Tahan tombol Kembali untuk keluar...'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Keluar Menonton?'), findsOneWidget);
+    expect(find.text('Lanjut Menonton'), findsOneWidget);
+    expect(find.text('Keluar'), findsOneWidget);
   });
 
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
