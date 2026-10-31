@@ -55,7 +55,91 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   final Set<int> _watchedIndices = {};
   bool _isSubtitleModalOpen = false;
 
+  // In-memory prefetch cache for next episode (zero disk usage, cleared on dispose)
+  final Map<int, List<SubtitleCue>> _prefetchedSubtitles = {};
+  final Map<int, List<SubtitleTrack>> _prefetchedTracks = {};
+  final Map<int, SubtitleTrack?> _prefetchedSelectedTrack = {};
+  int? _prefetchingIndex;
+
   bool get _hasSoftsub => _availableSubtitleTracks.isNotEmpty;
+
+  void _prefetchNextEpisode(int nextIndex) {
+    if (nextIndex < 0 || nextIndex >= widget.drama.episodes.length) return;
+    if (_prefetchingIndex == nextIndex || _prefetchedSubtitles.containsKey(nextIndex)) return;
+
+    _prefetchingIndex = nextIndex;
+    Future.microtask(() async {
+      try {
+        final ep = widget.drama.episodes[nextIndex];
+
+        // 1. If metadata/watchUrl needs detail fetch, fetch it in background
+        if ((ep.multiSubtitles.isEmpty && ep.subtitleUrl.isEmpty && ep.directSubtitleUrl.isEmpty) ||
+            (ep.effectiveStreamUrl.isEmpty && ep.playUrl.isEmpty)) {
+          if (ep.watchUrl.isNotEmpty) {
+            try {
+              final freshDetail = await NartoApiService.fetchDramaDetail(ep.watchUrl);
+              if (freshDetail != null && freshDetail.episodes.length > nextIndex) {
+                widget.drama.episodes[nextIndex] = freshDetail.episodes[nextIndex];
+              }
+            } catch (_) {}
+          }
+        }
+
+        final targetEp = widget.drama.episodes[nextIndex];
+
+        // 2. Resolve tracks and best track
+        final List<SubtitleTrack> tracks = [];
+        if (targetEp.multiSubtitles.isNotEmpty) {
+          tracks.addAll(targetEp.multiSubtitles);
+        } else if (targetEp.effectiveSubtitleUrl.isNotEmpty) {
+          tracks.add(
+            SubtitleTrack(
+              languageCode: 'id-ID',
+              label: 'Bahasa Indonesia',
+              subtitleUrl: targetEp.effectiveSubtitleUrl,
+              isDefault: true,
+            ),
+          );
+        }
+
+        SubtitleTrack? chosen;
+        if (tracks.isNotEmpty) {
+          final pref = _preferredLanguageCode.toLowerCase();
+          chosen = tracks.firstWhere(
+            (t) => t.languageCode.toLowerCase().startsWith(pref) || t.label.toLowerCase().contains(pref),
+            orElse: () => tracks.firstWhere(
+              (t) {
+                final c = t.languageCode.toLowerCase();
+                final l = t.label.toLowerCase();
+                return c.startsWith('id') || l.contains('indonesia') || c.contains('ina');
+              },
+              orElse: () => tracks.firstWhere((t) => t.isDefault, orElse: () => tracks.first),
+            ),
+          );
+        }
+
+        // 3. Pre-fetch subtitle cues if available
+        if (chosen != null && chosen.subtitleUrl.isNotEmpty) {
+          final cues = await NartoApiService.fetchSubtitles(chosen.subtitleUrl);
+          if (cues.isNotEmpty && mounted) {
+            _prefetchedSubtitles[nextIndex] = cues;
+            _prefetchedTracks[nextIndex] = tracks;
+            _prefetchedSelectedTrack[nextIndex] = chosen;
+
+            // Prune older cached episodes to keep RAM minimal
+            _prefetchedSubtitles.removeWhere((k, _) => k < _currentIndex);
+            _prefetchedTracks.removeWhere((k, _) => k < _currentIndex);
+            _prefetchedSelectedTrack.removeWhere((k, _) => k < _currentIndex);
+          }
+        }
+      } catch (_) {
+      } finally {
+        if (_prefetchingIndex == nextIndex) {
+          _prefetchingIndex = null;
+        }
+      }
+    });
+  }
 
   // Temporary seek indicator
   String _seekIndicatorText = '';
@@ -247,7 +331,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _cachedVideoWidget = null;
     await oldController?.dispose();
 
-    await _loadSubtitlesForCurrentEpisode();
+    // Fast path: Apply prefetched subtitles immediately if ready in RAM
+    if (_prefetchedSubtitles.containsKey(_currentIndex)) {
+      _availableSubtitleTracks = _prefetchedTracks[_currentIndex] ?? [];
+      _selectedTrack = _prefetchedSelectedTrack[_currentIndex];
+      _subtitles = _prefetchedSubtitles[_currentIndex] ?? [];
+      _activeSubtitleNotifier.value = '';
+      _activeCueIndex = -1;
+    } else {
+      // Run subtitle fetch concurrently with video init without blocking video start
+      _loadSubtitlesForCurrentEpisode();
+    }
 
     final currentEp = widget.drama.episodes[_currentIndex];
     var streamUrl = currentEp.effectiveStreamUrl;
@@ -287,6 +381,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           clean.contains('/m/') ||
           clean.contains('/stream');
 
+      const timeoutDuration = Duration(seconds: 4);
+
       // 1. Try with detected formatHint and headers
       try {
         final c = VideoPlayerController.networkUrl(
@@ -294,7 +390,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           formatHint: isHls ? VideoFormat.hls : null,
           httpHeaders: videoHeaders,
         );
-        await c.initialize();
+        await c.initialize().timeout(timeoutDuration);
         return c;
       } catch (_) {}
 
@@ -305,7 +401,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           formatHint: isHls ? null : VideoFormat.hls,
           httpHeaders: videoHeaders,
         );
-        await c.initialize();
+        await c.initialize().timeout(timeoutDuration);
         return c;
       } catch (_) {}
 
@@ -315,7 +411,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           uri,
           formatHint: isHls ? VideoFormat.hls : null,
         );
-        await c.initialize();
+        await c.initialize().timeout(timeoutDuration);
         return c;
       } catch (_) {}
 
@@ -387,8 +483,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             _activeCueIndex = -1;
           }
 
-          // Auto next episode
-          if (!_isConfirmingExit && pos >= controller.value.duration && controller.value.duration > Duration.zero) {
+          // Auto next episode with soft EOF trigger (last 250ms or at EOF)
+          final dur = controller.value.duration;
+          final remaining = dur - pos;
+          final isNearEnd = dur > const Duration(seconds: 2) && remaining <= const Duration(milliseconds: 250);
+          final isAtEnd = dur > Duration.zero && pos >= dur;
+
+          if (!_isConfirmingExit && (isNearEnd || isAtEnd)) {
             if (!_isAutoAdvancing && _currentIndex < widget.drama.episodes.length - 1) {
               _isAutoAdvancing = true;
               _playNextEpisode();
@@ -410,6 +511,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         });
       }
       _isAutoAdvancing = false;
+
+      // Automatically prefetch next episode metadata & subtitles in background
+      if (_currentIndex < widget.drama.episodes.length - 1) {
+        _prefetchNextEpisode(_currentIndex + 1);
+      }
     } catch (e) {
       _isAutoAdvancing = false;
       if (mounted) {
@@ -544,7 +650,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _availableSubtitleTracks = [];
       _selectedTrack = null;
     });
-    await _savePlaybackHistory();
+    _savePlaybackHistory();
     await _initController();
     _isAutoAdvancing = false;
   }
@@ -1329,6 +1435,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
     _hideControlsTimer?.cancel();
     _seekIndicatorTimer?.cancel();
+    _prefetchedSubtitles.clear();
+    _prefetchedTracks.clear();
+    _prefetchedSelectedTrack.clear();
     _activeSubtitleNotifier.dispose();
     _controller?.dispose();
     _controller = null;
