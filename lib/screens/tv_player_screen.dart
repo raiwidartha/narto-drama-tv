@@ -698,7 +698,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
     if (_showControls) {
       _dismissControls();
-      return;
     }
 
     // Clean playback: single press Back directly opens exit confirmation dialog!

@@ -17,7 +17,7 @@ class TvHomeScreen extends StatefulWidget {
   State<TvHomeScreen> createState() => _TvHomeScreenState();
 }
 
-class _TvHomeScreenState extends State<TvHomeScreen> {
+class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver {
   int _selectedTabIndex = 0; // 0: Home, 1: Providers, 2: History, 3: Favorites, 4: Search, 5: Settings
 
   // Home tab state (independent feed & pagination)
@@ -38,9 +38,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Timer? _pingAutoTimer;
   final FocusNode _pingFocusNode = FocusNode();
 
-  // Home pagination focus nodes
-  final FocusNode _homePrevPageFocusNode = FocusNode();
-  final FocusNode _homeNextPageFocusNode = FocusNode();
+  // Home pagination focus nodes (bottom only)
   final FocusNode _homeBottomPrevFocusNode = FocusNode();
   final FocusNode _homeBottomNextFocusNode = FocusNode();
 
@@ -54,9 +52,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   int _providerTotalPages = 1;
   static const int _providerPageSize = 60;
 
-  // Provider pagination focus nodes
-  final FocusNode _providerPrevPageFocusNode = FocusNode();
-  final FocusNode _providerNextPageFocusNode = FocusNode();
+  // Provider pagination focus nodes (bottom only)
   final FocusNode _providerBottomPrevFocusNode = FocusNode();
   final FocusNode _providerBottomNextFocusNode = FocusNode();
 
@@ -101,12 +97,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_onHardwareKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _tabFocusNodes.isNotEmpty) {
         _tabFocusNodes[0].requestFocus();
       }
     });
     _initApp();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadHistory();
+      _loadBookmarks();
+    }
   }
 
   Future<void> _initApp() async {
@@ -1025,9 +1031,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         builder: (_) => TvDetailScreen(drama: drama),
       ),
     );
-    // Refresh history and bookmarks if those tabs are active
-    if (_selectedTabIndex == 2) _loadHistory();
-    if (_selectedTabIndex == 3) _loadBookmarks();
+    // Refresh history and bookmarks immediately whenever returning to home screen
+    _loadHistory();
+    _loadBookmarks();
   }
 
   Future<void> _performSearch(String q) async {
@@ -1068,6 +1074,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onHardwareKey);
+    WidgetsBinding.instance.removeObserver(this);
     for (final node in _tabFocusNodes) {
       node.dispose();
     }
@@ -1077,12 +1085,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _providerChipFocusNodes.clear();
     _pingAutoTimer?.cancel();
     _pingFocusNode.dispose();
-    _homePrevPageFocusNode.dispose();
-    _homeNextPageFocusNode.dispose();
     _homeBottomPrevFocusNode.dispose();
     _homeBottomNextFocusNode.dispose();
-    _providerPrevPageFocusNode.dispose();
-    _providerNextPageFocusNode.dispose();
     _providerBottomPrevFocusNode.dispose();
     _providerBottomNextFocusNode.dispose();
     _firstHomeFocusNode.dispose();
@@ -1109,9 +1113,40 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     super.dispose();
   }
 
+  bool _isHandlingBack = false;
+  bool _isShowingExitDialog = false;
+
+  bool _onHardwareKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final key = event.logicalKey;
+    final isBackKey = key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.gameButtonB;
+
+    if (!isBackKey) return false;
+
+    // Check if this screen is active and not covered by another route
+    if (!mounted) return false;
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute != null && !modalRoute.isCurrent) {
+      return false;
+    }
+
+    if (_isHandlingBack || _isShowingExitDialog) return false;
+
+    // Trigger back press immediately on single press KeyDown
+    _handleBackPress();
+    return true;
+  }
+
   Future<bool> _showExitConfirmationDialog() async {
+    final cancelFocusNode = FocusNode();
+    final exitFocusNode = FocusNode();
+
     final result = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
@@ -1132,8 +1167,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ),
           actions: [
             TvFocusable(
+              focusNode: cancelFocusNode,
               autofocus: true,
               onPressed: () => Navigator.of(ctx).pop(false),
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  if (exitFocusNode.canRequestFocus) {
+                    exitFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xFF334155),
               focusedBackgroundColor: const Color(0xFF475569),
@@ -1142,7 +1187,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
             const SizedBox(width: 12),
             TvFocusable(
+              focusNode: exitFocusNode,
               onPressed: () => Navigator.of(ctx).pop(true),
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  if (cancelFocusNode.canRequestFocus) {
+                    cancelFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xFFFF2D55),
               focusedBackgroundColor: const Color(0xFFFF5377),
@@ -1153,75 +1208,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         );
       },
     );
+
+    cancelFocusNode.dispose();
+    exitFocusNode.dispose();
     return result ?? false;
   }
 
-  DateTime _lastBackPressTime = DateTime.fromMillisecondsSinceEpoch(0);
-  bool _isHandlingBack = false;
-
   Future<void> _handleBackPress() async {
-    final now = DateTime.now();
-    if (now.difference(_lastBackPressTime) < const Duration(milliseconds: 500)) {
-      return;
-    }
-    _lastBackPressTime = now;
-
-    if (_isHandlingBack) return;
+    if (_isHandlingBack || _isShowingExitDialog) return;
     _isHandlingBack = true;
     try {
-      if (_selectedTabIndex == 0 && (_homeRefreshFocusNode.hasFocus || _homeFilterFocusNode.hasFocus)) {
-        _tabFocusNodes[0].requestFocus();
-        return;
-      }
-
-      if (_selectedTabIndex == 1) {
-        if (_providerSyncFocusNode.hasFocus) {
-          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
-          if (activeChipNode.canRequestFocus) {
-            activeChipNode.requestFocus();
-          } else {
-            _firstProviderFocusNode.requestFocus();
-          }
-          return;
-        }
-
-        final isNavbarFocused = _tabFocusNodes[1].hasFocus;
-        final isAnyChipFocused = _providerChipFocusNodes.values.any((n) => n.hasFocus) || _firstProviderFocusNode.hasFocus;
-
-        if (!isNavbarFocused && !isAnyChipFocused) {
-          // Focus is down in drama grid or below provider chips -> return to provider chip first
-          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
-          if (activeChipNode.canRequestFocus) {
-            activeChipNode.requestFocus();
-          } else {
-            _firstProviderFocusNode.requestFocus();
-          }
-          return;
-        } else if (isAnyChipFocused) {
-          // Focus is on provider chip -> return to navbar tab Provider
-          _tabFocusNodes[1].requestFocus();
-          return;
-        }
-      }
-
-      final isAnyTabFocused = _tabFocusNodes.any((n) => n.hasFocus);
-      if (!isAnyTabFocused) {
-        // Return focus to the currently active tab in navbar
-        final targetIndex = (_selectedTabIndex >= 0 && _selectedTabIndex < _tabFocusNodes.length)
-            ? _selectedTabIndex
-            : 0;
-        _tabFocusNodes[targetIndex].requestFocus();
-        return;
-      }
-
-      // If already on the navbar but not on Beranda (tab 0), return to Beranda
+      if (!mounted) return;
+      // If not on Beranda (tab 0), single press Back returns directly to Beranda
       if (_selectedTabIndex != 0) {
         _onTabChanged(0);
         return;
       }
 
-      // If already on Beranda tab in navbar, show exit confirmation dialog
+      // Single press Back on Beranda immediately opens exit confirmation dialog!
+      _isShowingExitDialog = true;
       final shouldExit = await _showExitConfirmationDialog();
+      _isShowingExitDialog = false;
       if (shouldExit == true) {
         SystemNavigator.pop();
       }
@@ -1575,7 +1582,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           return KeyEventResult.handled;
                         }
                         if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                          _homePrevPageFocusNode.requestFocus();
                           return KeyEventResult.handled;
                         }
                         if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -1609,8 +1615,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  _buildHomeHeaderPagination(),
                 ],
               ),
             ],
@@ -1711,14 +1715,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   onKeyEvent: (node, event) {
                                     if (event is KeyDownEvent) {
                                       if (event.logicalKey == LogicalKeyboardKey.arrowUp && isTopRow) {
-                                        if (index < 2) {
+                                        if (index < 3) {
                                           _homeFilterFocusNode.requestFocus();
-                                        } else if (index < 4) {
-                                          _homeRefreshFocusNode.requestFocus();
-                                        } else if (index < 5) {
-                                          _homePrevPageFocusNode.requestFocus();
                                         } else {
-                                          _homeNextPageFocusNode.requestFocus();
+                                          _homeRefreshFocusNode.requestFocus();
                                         }
                                         return KeyEventResult.handled;
                                       }
@@ -1749,104 +1749,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
-  Widget _buildHomeHeaderPagination() {
-    final canPrev = _homeCurrentPage > 1;
-    final canNext = _homeCurrentPage < _homeTotalPages;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF334155), width: 1),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TvFocusable(
-            focusNode: _homePrevPageFocusNode,
-            onPressed: canPrev ? () => _changeHomePage(_homeCurrentPage - 1) : null,
-            onKeyEvent: (node, event) {
-              if (event is KeyDownEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  _homeRefreshFocusNode.requestFocus();
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                  _homeNextPageFocusNode.requestFocus();
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  _tabFocusNodes[0].requestFocus();
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                  if (_firstHomeDramaFocusNode.canRequestFocus) {
-                    _firstHomeDramaFocusNode.requestFocus();
-                  }
-                  return KeyEventResult.handled;
-                }
-              }
-              return KeyEventResult.ignored;
-            },
-            borderRadius: BorderRadius.circular(4),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            backgroundColor: Colors.transparent,
-            focusedBackgroundColor: const Color(0xFFFF2D55),
-            child: Icon(
-              Icons.chevron_left_rounded,
-              color: canPrev ? Colors.white : Colors.white24,
-              size: 18,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              'Hal $_homeCurrentPage / $_homeTotalPages',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          TvFocusable(
-            focusNode: _homeNextPageFocusNode,
-            onPressed: canNext ? () => _changeHomePage(_homeCurrentPage + 1) : null,
-            onKeyEvent: (node, event) {
-              if (event is KeyDownEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  _homePrevPageFocusNode.requestFocus();
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  _tabFocusNodes[0].requestFocus();
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                  if (_firstHomeDramaFocusNode.canRequestFocus) {
-                    _firstHomeDramaFocusNode.requestFocus();
-                  }
-                  return KeyEventResult.handled;
-                }
-              }
-              return KeyEventResult.ignored;
-            },
-            borderRadius: BorderRadius.circular(4),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            backgroundColor: Colors.transparent,
-            focusedBackgroundColor: const Color(0xFFFF2D55),
-            child: Icon(
-              Icons.chevron_right_rounded,
-              color: canNext ? Colors.white : Colors.white24,
-              size: 18,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildHomeBottomPagination() {
     if (_homeTotalPages <= 1 && _allHomeDramas.length <= _homePageSize) {
       return const SizedBox.shrink();
@@ -1855,7 +1757,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final canNext = _homeCurrentPage < _homeTotalPages;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1864,7 +1766,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             onPressed: canPrev ? () => _changeHomePage(_homeCurrentPage - 1) : null,
             onKeyEvent: (node, event) {
               if (event is KeyDownEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight && canNext) {
                   _homeBottomNextFocusNode.requestFocus();
                   return KeyEventResult.handled;
                 }
@@ -1882,47 +1784,49 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             borderRadius: BorderRadius.circular(8),
             backgroundColor: canPrev ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
             focusedBackgroundColor: const Color(0xFFFF2D55),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            focusBorderColor: const Color(0xFF00E5FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.arrow_back_rounded, size: 16, color: canPrev ? Colors.white : Colors.white24),
-                const SizedBox(width: 8),
+                Icon(Icons.chevron_left_rounded, size: 20, color: canPrev ? Colors.white : Colors.white24),
+                const SizedBox(width: 4),
                 Text(
-                  'Halaman Sebelumnya',
+                  'Prev',
                   style: TextStyle(
                     color: canPrev ? Colors.white : Colors.white24,
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFF0F172A),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFF334155)),
             ),
             child: Text(
-              'Halaman $_homeCurrentPage dari $_homeTotalPages (${_allHomeDramas.isNotEmpty ? _allHomeDramas.length : _homeDramas.length} Drama)',
+              '< Hal $_homeCurrentPage dari $_homeTotalPages >',
               style: const TextStyle(
                 color: Color(0xFF38BDF8),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           TvFocusable(
             focusNode: _homeBottomNextFocusNode,
             onPressed: canNext ? () => _changeHomePage(_homeCurrentPage + 1) : null,
             onKeyEvent: (node, event) {
               if (event is KeyDownEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft && canPrev) {
                   _homeBottomPrevFocusNode.requestFocus();
                   return KeyEventResult.handled;
                 }
@@ -1940,20 +1844,21 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             borderRadius: BorderRadius.circular(8),
             backgroundColor: canNext ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
             focusedBackgroundColor: const Color(0xFFFF2D55),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            focusBorderColor: const Color(0xFF00E5FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Halaman Berikutnya',
+                  'Next',
                   style: TextStyle(
                     color: canNext ? Colors.white : Colors.white24,
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(Icons.arrow_forward_rounded, size: 16, color: canNext ? Colors.white : Colors.white24),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded, size: 20, color: canNext ? Colors.white : Colors.white24),
               ],
             ),
           ),
@@ -2122,98 +2027,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
                       ),
                       child: Text(
-                        'Hal $_providerCurrentPage / $_providerTotalPages (${_allProviderDramas.length} drama)',
+                        '${_allProviderDramas.length} drama',
                         style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
                 ],
               ),
-              if (_providerTotalPages > 1)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TvFocusable(
-                      focusNode: _providerPrevPageFocusNode,
-                      onPressed: _providerCurrentPage > 1 ? () => _changeProviderPage(_providerCurrentPage - 1) : null,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                            if (_providerNextPageFocusNode.canRequestFocus) {
-                              _providerNextPageFocusNode.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                            if (_firstProviderDramaFocusNode.canRequestFocus) {
-                              _firstProviderDramaFocusNode.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                            final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
-                            if (activeChip.canRequestFocus) {
-                              activeChip.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          }
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      borderRadius: BorderRadius.circular(6),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      backgroundColor: _providerCurrentPage > 1 ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
-                      focusedBackgroundColor: const Color(0xFFFF2D55),
-                      focusBorderColor: const Color(0xFF00E5FF),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.arrow_back_ios_new_rounded, size: 12, color: _providerCurrentPage > 1 ? Colors.white : Colors.white30),
-                          const SizedBox(width: 4),
-                          Text('Prev', style: TextStyle(color: _providerCurrentPage > 1 ? Colors.white : Colors.white30, fontSize: 11, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    TvFocusable(
-                      focusNode: _providerNextPageFocusNode,
-                      onPressed: _providerCurrentPage < _providerTotalPages ? () => _changeProviderPage(_providerCurrentPage + 1) : null,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                            if (_providerPrevPageFocusNode.canRequestFocus) {
-                              _providerPrevPageFocusNode.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                            if (_firstProviderDramaFocusNode.canRequestFocus) {
-                              _firstProviderDramaFocusNode.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                            final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
-                            if (activeChip.canRequestFocus) {
-                              activeChip.requestFocus();
-                            }
-                            return KeyEventResult.handled;
-                          }
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      borderRadius: BorderRadius.circular(6),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      backgroundColor: _providerCurrentPage < _providerTotalPages ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
-                      focusedBackgroundColor: const Color(0xFFFF2D55),
-                      focusBorderColor: const Color(0xFF00E5FF),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Next', style: TextStyle(color: _providerCurrentPage < _providerTotalPages ? Colors.white : Colors.white30, fontSize: 11, fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: _providerCurrentPage < _providerTotalPages ? Colors.white : Colors.white30),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -2355,9 +2175,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   onKeyEvent: (node, event) {
                                     if (event is KeyDownEvent) {
                                       if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                        if (_providerPrevPageFocusNode.canRequestFocus && _providerTotalPages > 1) {
-                                          _providerPrevPageFocusNode.requestFocus();
-                                        } else if (activeChipNode.canRequestFocus) {
+                                        if (activeChipNode.canRequestFocus) {
                                           activeChipNode.requestFocus();
                                         } else {
                                           _firstProviderFocusNode.requestFocus();
@@ -2365,8 +2183,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                         return KeyEventResult.handled;
                                       }
                                       if (index >= _providerDramas.length - 6 && event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                                        if (_providerTotalPages > 1 && _providerBottomNextFocusNode.canRequestFocus) {
-                                          _providerBottomNextFocusNode.requestFocus();
+                                        if (_providerTotalPages > 1) {
+                                          if (_providerCurrentPage > 1 && index % 6 < 3 && _providerBottomPrevFocusNode.canRequestFocus) {
+                                            _providerBottomPrevFocusNode.requestFocus();
+                                          } else if (_providerBottomNextFocusNode.canRequestFocus) {
+                                            _providerBottomNextFocusNode.requestFocus();
+                                          }
                                           return KeyEventResult.handled;
                                         }
                                       }
@@ -2395,7 +2217,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final canNext = _providerCurrentPage < _providerTotalPages;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -2422,41 +2244,43 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             borderRadius: BorderRadius.circular(8),
             backgroundColor: canPrev ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
             focusedBackgroundColor: const Color(0xFFFF2D55),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            focusBorderColor: const Color(0xFF00E5FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.arrow_back_rounded, size: 16, color: canPrev ? Colors.white : Colors.white24),
-                const SizedBox(width: 8),
+                Icon(Icons.chevron_left_rounded, size: 20, color: canPrev ? Colors.white : Colors.white24),
+                const SizedBox(width: 4),
                 Text(
-                  'Halaman Sebelumnya',
+                  'Prev',
                   style: TextStyle(
                     color: canPrev ? Colors.white : Colors.white24,
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFF0F172A),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFF334155)),
             ),
             child: Text(
-              'Halaman $_providerCurrentPage dari $_providerTotalPages (${_allProviderDramas.isNotEmpty ? _allProviderDramas.length : _providerDramas.length} Drama)',
+              '< Hal $_providerCurrentPage dari $_providerTotalPages >',
               style: const TextStyle(
                 color: Color(0xFF38BDF8),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           TvFocusable(
             focusNode: _providerBottomNextFocusNode,
             onPressed: canNext ? () => _changeProviderPage(_providerCurrentPage + 1) : null,
@@ -2480,20 +2304,21 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             borderRadius: BorderRadius.circular(8),
             backgroundColor: canNext ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
             focusedBackgroundColor: const Color(0xFFFF2D55),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            focusBorderColor: const Color(0xFF00E5FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Halaman Berikutnya',
+                  'Next',
                   style: TextStyle(
                     color: canNext ? Colors.white : Colors.white24,
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(Icons.arrow_forward_rounded, size: 16, color: canNext ? Colors.white : Colors.white24),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded, size: 20, color: canNext ? Colors.white : Colors.white24),
               ],
             ),
           ),

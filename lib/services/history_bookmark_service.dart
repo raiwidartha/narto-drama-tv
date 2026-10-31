@@ -209,7 +209,17 @@ class HistoryBookmarkService {
   static Future<List<HistoryItem>> getHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_historyKey);
+      var raw = prefs.getString(_historyKey);
+      
+      // Fallback/migration for legacy keys if _historyKey is empty
+      if (raw == null || raw.isEmpty) {
+        final legacyString = prefs.getString('user_history') ?? prefs.getString('narto_history');
+        if (legacyString != null && legacyString.isNotEmpty) {
+          raw = legacyString;
+          await prefs.setString(_historyKey, legacyString);
+        }
+      }
+
       if (raw == null || raw.isEmpty) return [];
       final List decoded = jsonDecode(raw) as List;
       final list = decoded.map((e) => HistoryItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -248,9 +258,11 @@ class HistoryBookmarkService {
         }
       }
 
-      // JSON history list
+      // JSON history list: deduplicate safely without wiping entries with blank/0 ids
       final list = await getHistory();
-      list.removeWhere((item) => item.key == dramaKey || (dramaId.isNotEmpty && item.id == dramaId));
+      list.removeWhere((item) =>
+          (item.key.isNotEmpty && item.key == dramaKey) ||
+          (dramaId.isNotEmpty && dramaId != '0' && item.id.isNotEmpty && item.id != '0' && item.id == dramaId));
 
       final newItem = HistoryItem(
         key: dramaKey,
@@ -266,7 +278,8 @@ class HistoryBookmarkService {
       );
 
       list.insert(0, newItem);
-      if (list.length > 100) list.removeRange(100, list.length);
+      // Keep up to 1000 items so user history never gets trimmed or lost
+      if (list.length > 1000) list.removeRange(1000, list.length);
 
       final encoded = jsonEncode(list.map((e) => e.toJson()).toList());
       await prefs.setString(_historyKey, encoded);
@@ -277,7 +290,9 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = await getHistory();
-      list.removeWhere((item) => item.key == key || item.id == key);
+      list.removeWhere((item) =>
+          (item.key.isNotEmpty && item.key == key) ||
+          (item.id.isNotEmpty && item.id != '0' && item.id == key));
       final encoded = jsonEncode(list.map((e) => e.toJson()).toList());
       await prefs.setString(_historyKey, encoded);
     } catch (_) {}
@@ -298,7 +313,17 @@ class HistoryBookmarkService {
   static Future<List<BookmarkItem>> getBookmarks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_bookmarksKey);
+      var raw = prefs.getString(_bookmarksKey);
+
+      // Fallback/migration for legacy keys if _bookmarksKey is empty
+      if (raw == null || raw.isEmpty) {
+        final legacyString = prefs.getString('user_bookmarks') ?? prefs.getString('bookmarks');
+        if (legacyString != null && legacyString.isNotEmpty) {
+          raw = legacyString;
+          await prefs.setString(_bookmarksKey, legacyString);
+        }
+      }
+
       if (raw == null || raw.isEmpty) return [];
       final List decoded = jsonDecode(raw) as List;
       final list = decoded.map((e) => BookmarkItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -312,7 +337,9 @@ class HistoryBookmarkService {
   static Future<bool> isBookmarked(String key) async {
     try {
       final list = await getBookmarks();
-      return list.any((item) => item.key == key || item.id == key);
+      return list.any((item) =>
+          (item.key.isNotEmpty && item.key == key) ||
+          (item.id.isNotEmpty && item.id != '0' && item.id == key));
     } catch (_) {
       return false;
     }
@@ -330,7 +357,9 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = await getBookmarks();
-      final existingIndex = list.indexWhere((item) => item.key == dramaKey || (dramaId.isNotEmpty && item.id == dramaId));
+      final existingIndex = list.indexWhere((item) =>
+          (item.key.isNotEmpty && item.key == dramaKey) ||
+          (dramaId.isNotEmpty && dramaId != '0' && item.id.isNotEmpty && item.id != '0' && item.id == dramaId));
 
       if (existingIndex >= 0) {
         // Remove
@@ -362,7 +391,9 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = await getBookmarks();
-      list.removeWhere((item) => item.key == key || item.id == key);
+      list.removeWhere((item) =>
+          (item.key.isNotEmpty && item.key == key) ||
+          (item.id.isNotEmpty && item.id != '0' && item.id == key));
       await prefs.setString(_bookmarksKey, jsonEncode(list.map((e) => e.toJson()).toList()));
     } catch (_) {}
   }
