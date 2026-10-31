@@ -109,7 +109,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       _loadHomeCatalog(reset: true);
       _runPingTest();
       _pingAutoTimer?.cancel();
-      _pingAutoTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      _pingAutoTimer = Timer.periodic(const Duration(seconds: 15), (_) {
         if (mounted) _runPingTest();
       });
     }
