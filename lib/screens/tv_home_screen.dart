@@ -1724,9 +1724,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                       }
                                       if (event.logicalKey == LogicalKeyboardKey.arrowDown && isBottomRow) {
                                         if (_homeTotalPages > 1) {
-                                          if (index % 6 < 3) {
+                                          if (_homeCurrentPage > 1 && index % 6 < 3 && _homeBottomPrevFocusNode.canRequestFocus) {
                                             _homeBottomPrevFocusNode.requestFocus();
-                                          } else {
+                                          } else if (_homeBottomNextFocusNode.canRequestFocus) {
                                             _homeBottomNextFocusNode.requestFocus();
                                           }
                                           return KeyEventResult.handled;
