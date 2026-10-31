@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/drama.dart';
 import '../services/narto_api_service.dart';
 import '../services/history_bookmark_service.dart';
@@ -21,6 +20,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
   bool _isLoading = true;
   String _errorMessage = '';
   int? _lastWatchedEpIndex;
+  Set<int> _watchedEpisodeIndices = {};
   bool _isBookmarked = false;
 
   @override
@@ -30,18 +30,38 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
     _loadHistoryAndBookmark();
   }
 
+  List<String> _collectCandidateKeys() {
+    return <String>{
+      widget.drama.historyKey,
+      widget.drama.id,
+      widget.drama.slug,
+      if (_detail != null) ...[
+        _detail!.historyKey,
+        _detail!.id,
+        if (_detail!.slug != null && _detail!.slug!.isNotEmpty) _detail!.slug!,
+      ],
+    }.where((k) => k.isNotEmpty && k != '0').toList();
+  }
+
   Future<void> _loadHistoryAndBookmark() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = widget.drama.historyKey;
-      int? last = prefs.getInt('last_ep_$key');
-      if (last == null && widget.drama.id.isNotEmpty && widget.drama.id != '0') {
-        last = prefs.getInt('last_ep_${widget.drama.id}');
-      }
-      final bookmarked = await HistoryBookmarkService.isBookmarked(key);
+      final keys = _collectCandidateKeys();
+      final last = await HistoryBookmarkService.getLastWatchedEpisode(
+        candidateKeys: keys,
+        title: widget.drama.title,
+      );
+      final watchedSet = await HistoryBookmarkService.getWatchedEpisodes(
+        candidateKeys: keys,
+        title: widget.drama.title,
+      );
+      final bookmarked = await HistoryBookmarkService.isBookmarked(
+        keys,
+        title: widget.drama.title,
+      );
       if (mounted) {
         setState(() {
           _lastWatchedEpIndex = last;
+          _watchedEpisodeIndices = watchedSet;
           _isBookmarked = bookmarked;
         });
       }
@@ -73,6 +93,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
             _detail = mergedDetail;
             _isLoading = false;
           });
+          _loadHistoryAndBookmark();
         }
       }
     } catch (e) {
@@ -88,17 +109,30 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
   void _openPlayer(int episodeIndex) async {
     if (_detail == null || _detail!.episodes.isEmpty) return;
 
-    await Navigator.of(context).push(
+    final result = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => TvPlayerScreen(
           drama: _detail!,
           initialEpisodeIndex: episodeIndex,
+          originHistoryKey: widget.drama.historyKey,
+          originDramaId: widget.drama.id,
+          originTitle: widget.drama.title,
         ),
       ),
     );
 
+    if (result != null && mounted) {
+      setState(() {
+        _lastWatchedEpIndex = result;
+        _watchedEpisodeIndices.add(result);
+        for (int i = 0; i <= result; i++) {
+          _watchedEpisodeIndices.add(i);
+        }
+      });
+    }
+
     // Refresh history when returning from player
-    _loadHistoryAndBookmark();
+    await _loadHistoryAndBookmark();
   }
 
   String get _effectiveProvider {
@@ -133,9 +167,14 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
     final totalEp = detail?.episodes.length ?? int.tryParse(widget.drama.episodeCount ?? '0') ?? 0;
     final effectiveProv = _effectiveProvider;
 
+    final aliasKeys = _collectCandidateKeys()
+        .where((k) => k != widget.drama.historyKey && k != widget.drama.id && k != '0')
+        .toList();
+
     await HistoryBookmarkService.toggleBookmark(
       dramaKey: widget.drama.historyKey,
       dramaId: widget.drama.id,
+      aliasKeys: aliasKeys,
       title: title,
       posterUrl: poster,
       watchUrl: widget.drama.watchUrl,
@@ -143,7 +182,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
       totalEpisodes: totalEp,
     );
 
-    _loadHistoryAndBookmark();
+    await _loadHistoryAndBookmark();
   }
 
   @override
@@ -500,7 +539,8 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                           ),
                           itemCount: episodes.length,
                           itemBuilder: (context, index) {
-                            final isWatched = _lastWatchedEpIndex != null && index <= _lastWatchedEpIndex!;
+                            final isWatched = _watchedEpisodeIndices.contains(index) ||
+                                (_lastWatchedEpIndex != null && index < _lastWatchedEpIndex!);
                             final isCurrent = index == _lastWatchedEpIndex;
 
                             return TvFocusable(
@@ -520,10 +560,14 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (isWatched && !isCurrent)
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 3),
-                                        child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 11),
+                                    if (isWatched)
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 3),
+                                        child: Icon(
+                                          Icons.check_circle_rounded,
+                                          color: isCurrent ? Colors.white : const Color(0xFF10B981),
+                                          size: 11,
+                                        ),
                                       ),
                                     Text(
                                       'EP ${index + 1}',

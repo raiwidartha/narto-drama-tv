@@ -233,6 +233,7 @@ class HistoryBookmarkService {
   static Future<void> saveHistory({
     required String dramaKey,
     required String dramaId,
+    List<String>? aliasKeys,
     int? movieId,
     required String title,
     required String posterUrl,
@@ -244,25 +245,47 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Legacy keys compatibility for DetailScreen / PlayerScreen
-      await prefs.setInt('last_ep_$dramaKey', episodeIndex);
-      await prefs.setString('last_title_$dramaKey', title);
-      if (dramaId.isNotEmpty && dramaId != '0') {
-        await prefs.setInt('last_ep_$dramaId', episodeIndex);
+      final allKeys = <String>{
+        dramaKey,
+        if (dramaId.isNotEmpty && dramaId != '0') dramaId,
+        if (aliasKeys != null) ...aliasKeys.where((k) => k.isNotEmpty && k != '0'),
+      };
+
+      final cleanTitle = DramaItem.cleanTitle(title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+      if (cleanTitle.isNotEmpty) {
+        allKeys.add('title_$cleanTitle');
       }
-      final prevMax = prefs.getInt('max_ep_$dramaKey') ?? -1;
-      if (episodeIndex > prevMax) {
-        await prefs.setInt('max_ep_$dramaKey', episodeIndex);
-        if (dramaId.isNotEmpty && dramaId != '0') {
-          await prefs.setInt('max_ep_$dramaId', episodeIndex);
+
+      for (final k in allKeys) {
+        await prefs.setInt('last_ep_$k', episodeIndex);
+        await prefs.setString('last_title_$k', title);
+        final prevMax = prefs.getInt('max_ep_$k') ?? -1;
+        if (episodeIndex > prevMax) {
+          await prefs.setInt('max_ep_$k', episodeIndex);
         }
+
+        // Manage persistent watched_eps list
+        final watchedRaw = prefs.getString('watched_eps_$k');
+        final watchedSet = <int>{};
+        if (watchedRaw != null && watchedRaw.isNotEmpty) {
+          try {
+            final List decoded = jsonDecode(watchedRaw);
+            watchedSet.addAll(decoded.map((e) => int.tryParse(e.toString()) ?? 0));
+          } catch (_) {}
+        }
+        for (int i = 0; i <= episodeIndex; i++) {
+          watchedSet.add(i);
+        }
+        await prefs.setString('watched_eps_$k', jsonEncode(watchedSet.toList()..sort()));
       }
 
       // JSON history list: deduplicate safely without wiping entries with blank/0 ids
       final list = await getHistory();
       list.removeWhere((item) =>
-          (item.key.isNotEmpty && item.key == dramaKey) ||
-          (dramaId.isNotEmpty && dramaId != '0' && item.id.isNotEmpty && item.id != '0' && item.id == dramaId));
+          allKeys.contains(item.key) ||
+          (item.id.isNotEmpty && item.id != '0' && allKeys.contains(item.id)) ||
+          (cleanTitle.isNotEmpty &&
+              DramaItem.cleanTitle(item.title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_') == cleanTitle));
 
       final newItem = HistoryItem(
         key: dramaKey,
@@ -286,6 +309,92 @@ class HistoryBookmarkService {
     } catch (_) {}
   }
 
+  static Future<int?> getLastWatchedEpisode({
+    required List<String> candidateKeys,
+    String? title,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keysToCheck = <String>{
+        ...candidateKeys.where((k) => k.isNotEmpty && k != '0'),
+      };
+      final cleanTitle = (title != null && title.trim().isNotEmpty)
+          ? DramaItem.cleanTitle(title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')
+          : '';
+      if (cleanTitle.isNotEmpty) {
+        keysToCheck.add('title_$cleanTitle');
+      }
+
+      int? maxFound;
+      for (final k in keysToCheck) {
+        final ep = prefs.getInt('last_ep_$k');
+        if (ep != null) {
+          if (maxFound == null || ep > maxFound) {
+            maxFound = ep;
+          }
+        }
+        final maxEp = prefs.getInt('max_ep_$k');
+        if (maxEp != null) {
+          if (maxFound == null || maxEp > maxFound) {
+            maxFound = maxEp;
+          }
+        }
+      }
+
+      if (maxFound != null) return maxFound;
+
+      final list = await getHistory();
+      for (final item in list) {
+        if (keysToCheck.contains(item.key) ||
+            (item.id.isNotEmpty && item.id != '0' && keysToCheck.contains(item.id)) ||
+            (cleanTitle.isNotEmpty &&
+                DramaItem.cleanTitle(item.title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_') == cleanTitle)) {
+          return item.lastEpisodeIndex;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<Set<int>> getWatchedEpisodes({
+    required List<String> candidateKeys,
+    String? title,
+  }) async {
+    final result = <int>{};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keysToCheck = <String>{
+        ...candidateKeys.where((k) => k.isNotEmpty && k != '0'),
+      };
+      final cleanTitle = (title != null && title.trim().isNotEmpty)
+          ? DramaItem.cleanTitle(title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')
+          : '';
+      if (cleanTitle.isNotEmpty) {
+        keysToCheck.add('title_$cleanTitle');
+      }
+
+      for (final k in keysToCheck) {
+        final raw = prefs.getString('watched_eps_$k');
+        if (raw != null && raw.isNotEmpty) {
+          try {
+            final List decoded = jsonDecode(raw);
+            result.addAll(decoded.map((e) => int.tryParse(e.toString()) ?? 0));
+          } catch (_) {}
+        }
+      }
+
+      final last = await getLastWatchedEpisode(candidateKeys: candidateKeys, title: title);
+      if (last != null && last >= 0) {
+        for (int i = 0; i <= last; i++) {
+          result.add(i);
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
   static Future<void> removeHistory(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -302,7 +411,11 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_historyKey);
-      final keys = prefs.getKeys().where((k) => k.startsWith('last_ep_') || k.startsWith('max_ep_')).toList();
+      final keys = prefs.getKeys().where((k) =>
+          k.startsWith('last_ep_') ||
+          k.startsWith('max_ep_') ||
+          k.startsWith('last_title_') ||
+          k.startsWith('watched_eps_')).toList();
       for (final k in keys) {
         await prefs.remove(k);
       }
@@ -334,12 +447,23 @@ class HistoryBookmarkService {
     }
   }
 
-  static Future<bool> isBookmarked(String key) async {
+  static Future<bool> isBookmarked(dynamic keyOrKeys, {String? title}) async {
     try {
       final list = await getBookmarks();
+      final Set<String> targetKeys;
+      if (keyOrKeys is Iterable<String>) {
+        targetKeys = keyOrKeys.toSet();
+      } else {
+        targetKeys = {keyOrKeys.toString()};
+      }
+      final cleanTitle = (title != null && title.trim().isNotEmpty)
+          ? DramaItem.cleanTitle(title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')
+          : '';
       return list.any((item) =>
-          (item.key.isNotEmpty && item.key == key) ||
-          (item.id.isNotEmpty && item.id != '0' && item.id == key));
+          targetKeys.contains(item.key) ||
+          (item.id.isNotEmpty && item.id != '0' && targetKeys.contains(item.id)) ||
+          (cleanTitle.isNotEmpty &&
+              DramaItem.cleanTitle(item.title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_') == cleanTitle));
     } catch (_) {
       return false;
     }
@@ -348,6 +472,7 @@ class HistoryBookmarkService {
   static Future<bool> toggleBookmark({
     required String dramaKey,
     required String dramaId,
+    List<String>? aliasKeys,
     required String title,
     required String posterUrl,
     required String watchUrl,
@@ -357,9 +482,18 @@ class HistoryBookmarkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = await getBookmarks();
+      final allKeys = <String>{
+        dramaKey,
+        if (dramaId.isNotEmpty && dramaId != '0') dramaId,
+        if (aliasKeys != null) ...aliasKeys.where((k) => k.isNotEmpty && k != '0'),
+      };
+      final cleanTitle = DramaItem.cleanTitle(title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+
       final existingIndex = list.indexWhere((item) =>
-          (item.key.isNotEmpty && item.key == dramaKey) ||
-          (dramaId.isNotEmpty && dramaId != '0' && item.id.isNotEmpty && item.id != '0' && item.id == dramaId));
+          allKeys.contains(item.key) ||
+          (item.id.isNotEmpty && item.id != '0' && allKeys.contains(item.id)) ||
+          (cleanTitle.isNotEmpty &&
+              DramaItem.cleanTitle(item.title).trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_') == cleanTitle));
 
       if (existingIndex >= 0) {
         // Remove

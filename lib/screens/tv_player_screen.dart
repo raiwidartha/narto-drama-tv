@@ -13,11 +13,17 @@ import '../widgets/tv_focusable.dart';
 class TvPlayerScreen extends StatefulWidget {
   final DramaDetail drama;
   final int initialEpisodeIndex;
+  final String? originHistoryKey;
+  final String? originDramaId;
+  final String? originTitle;
 
   const TvPlayerScreen({
     super.key,
     required this.drama,
     this.initialEpisodeIndex = 0,
+    this.originHistoryKey,
+    this.originDramaId,
+    this.originTitle,
   });
 
   @override
@@ -46,6 +52,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   SubtitleTrack? _selectedTrack;
   String _preferredLanguageCode = 'id';
   bool _isAutoAdvancing = false;
+  final Set<int> _watchedIndices = {};
   bool _isSubtitleModalOpen = false;
 
   bool get _hasSoftsub => _availableSubtitleTracks.isNotEmpty;
@@ -96,9 +103,43 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialEpisodeIndex;
+    _watchedIndices.add(_currentIndex);
+    for (int i = 0; i <= _currentIndex; i++) {
+      _watchedIndices.add(i);
+    }
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     _initController();
     _savePlaybackHistory();
+    _loadInitialWatchedIndices();
+  }
+
+  Future<void> _loadInitialWatchedIndices() async {
+    try {
+      final keys = <String>{
+        widget.drama.historyKey,
+        widget.drama.id,
+        if (widget.originHistoryKey != null && widget.originHistoryKey!.isNotEmpty)
+          widget.originHistoryKey!,
+        if (widget.originDramaId != null && widget.originDramaId!.isNotEmpty)
+          widget.originDramaId!,
+        if (widget.drama.slug != null && widget.drama.slug!.isNotEmpty)
+          widget.drama.slug!,
+      }.where((k) => k.isNotEmpty && k != '0').toList();
+
+      final eps = await HistoryBookmarkService.getWatchedEpisodes(
+        candidateKeys: keys,
+        title: widget.originTitle ?? widget.drama.title,
+      );
+      if (mounted) {
+        setState(() {
+          _watchedIndices.addAll(eps);
+          _watchedIndices.add(_currentIndex);
+          for (int i = 0; i <= _currentIndex; i++) {
+            _watchedIndices.add(i);
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   bool _onHardwareKey(KeyEvent event) {
@@ -138,7 +179,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     return res == KeyEventResult.handled;
   }
 
-  void _savePlaybackHistory() {
+  Future<void> _savePlaybackHistory() async {
     if (widget.drama.episodes.isNotEmpty && _currentIndex < widget.drama.episodes.length) {
       final ep = widget.drama.episodes[_currentIndex];
       final prov = (widget.drama.providerName?.isNotEmpty == true &&
@@ -146,11 +187,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
               widget.drama.providerName!.toLowerCase() != 'local')
           ? widget.drama.providerName!
           : DramaItem.detectProvider(watchUrl: ep.watchUrl);
-      HistoryBookmarkService.saveHistory(
+
+      final aliasKeys = <String>{
+        if (widget.originHistoryKey != null && widget.originHistoryKey!.isNotEmpty)
+          widget.originHistoryKey!,
+        if (widget.originDramaId != null && widget.originDramaId!.isNotEmpty)
+          widget.originDramaId!,
+        if (widget.drama.slug != null && widget.drama.slug!.isNotEmpty)
+          widget.drama.slug!,
+      }.where((k) => k != widget.drama.historyKey && k != widget.drama.id && k != '0').toList();
+
+      await HistoryBookmarkService.saveHistory(
         dramaKey: widget.drama.historyKey,
         dramaId: widget.drama.id,
+        aliasKeys: aliasKeys,
         movieId: widget.drama.effectiveMovieId,
-        title: widget.drama.title,
+        title: widget.originTitle?.isNotEmpty == true ? widget.originTitle! : widget.drama.title,
         posterUrl: widget.drama.posterUrl,
         watchUrl: ep.watchUrl,
         provider: (prov.isNotEmpty && prov.toLowerCase() != 'narto') ? prov : 'narto',
@@ -478,6 +530,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _hideControlsTimer?.cancel();
     setState(() {
       _currentIndex = newIndex;
+      _watchedIndices.add(newIndex);
+      for (int i = 0; i <= newIndex; i++) {
+        _watchedIndices.add(i);
+      }
       _showEpisodeDrawer = false;
       _isLoading = true;
       _hasError = false;
@@ -488,7 +544,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _availableSubtitleTracks = [];
       _selectedTrack = null;
     });
-    _savePlaybackHistory();
+    await _savePlaybackHistory();
     await _initController();
     _isAutoAdvancing = false;
   }
@@ -857,7 +913,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (!mounted) return;
 
     if (shouldExit == true) {
-      Navigator.of(context).pop();
+      await _savePlaybackHistory();
+      if (mounted) {
+        Navigator.of(context).pop(_currentIndex);
+      }
     } else {
       if (wasPlaying) {
         _controller?.play();
@@ -1906,6 +1965,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                           itemCount: widget.drama.episodes.length,
                           itemBuilder: (context, index) {
                             final isCur = index == _currentIndex;
+                            final isWatched = _watchedIndices.contains(index) || index < _currentIndex;
                             final fNode = _episodeFocusNodes.putIfAbsent(index, () => FocusNode());
                             return Padding(
                               padding: const EdgeInsets.only(right: 12),
@@ -1938,14 +1998,25 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                                 child: Container(
                                   width: 90,
                                   alignment: Alignment.center,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Text(
-                                    'Ep ${index + 1}',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: isCur ? FontWeight.w900 : FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isWatched && !isCur)
+                                        const Padding(
+                                          padding: EdgeInsets.only(right: 3),
+                                          child: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 12),
+                                        ),
+                                      Text(
+                                        'Ep ${index + 1}',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: isCur ? FontWeight.w900 : FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),

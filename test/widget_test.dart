@@ -13,7 +13,9 @@ import 'package:http/testing.dart' as http_testing;
 import 'package:narto_drama_tv/main.dart';
 import 'package:narto_drama_tv/models/drama.dart';
 import 'package:narto_drama_tv/services/app_settings.dart';
+import 'package:narto_drama_tv/services/history_bookmark_service.dart';
 import 'package:narto_drama_tv/widgets/tv_focusable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('Search provider detection test', () async {
@@ -233,5 +235,38 @@ void main() {
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const NartoDramaTvApp());
     expect(find.byType(NartoDramaTvApp), findsOneWidget);
+  });
+
+  test('HistoryBookmarkService tracks watched episodes, aliases, and bulk marking', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    // User starts watching Ep 2 (index 1) directly, skipping Ep 1
+    await HistoryBookmarkService.saveHistory(
+      dramaKey: 'detail_shortmax_9999',
+      dramaId: '9999',
+      aliasKeys: ['shortmax_9999', 'slug-ibu-tiri'],
+      title: 'Ibu Tiriku Gendut',
+      posterUrl: 'https://example.com/poster.jpg',
+      watchUrl: '/detail/watch/slug-ibu-tiri/2',
+      provider: 'shortmax',
+      episodeIndex: 1, // Episode 2
+      totalEpisodes: 50,
+    );
+
+    // Both episode index 0 (Ep 1) and index 1 (Ep 2) should be marked watched
+    final watched = await HistoryBookmarkService.getWatchedEpisodes(
+      candidateKeys: ['shortmax_9999', 'detail_shortmax_9999'],
+      title: 'Ibu Tiriku Gendut',
+    );
+    expect(watched.contains(0), isTrue); // Ep 1 auto-marked watched
+    expect(watched.contains(1), isTrue); // Ep 2 auto-marked watched
+    expect(watched.contains(2), isFalse); // Ep 3 not yet watched
+
+    // Querying with candidate key 'shortmax_9999' returns last watched index = 1
+    final lastEp = await HistoryBookmarkService.getLastWatchedEpisode(
+      candidateKeys: ['shortmax_9999'],
+      title: 'Ibu Tiriku Gendut',
+    );
+    expect(lastEp, equals(1));
   });
 }
