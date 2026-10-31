@@ -327,8 +327,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     }
 
     final oldController = _controller;
+    if (!_isAutoAdvancing) {
+      _cachedVideoWidget = null;
+    }
     _controller = null;
-    _cachedVideoWidget = null;
     await oldController?.dispose();
 
     // Fast path: Apply prefetched subtitles immediately if ready in RAM
@@ -483,10 +485,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             _activeCueIndex = -1;
           }
 
-          // Auto next episode with soft EOF trigger (last 250ms or at EOF)
+          // Auto next episode with soft EOF trigger (last 800ms or at EOF)
           final dur = controller.value.duration;
           final remaining = dur - pos;
-          final isNearEnd = dur > const Duration(seconds: 2) && remaining <= const Duration(milliseconds: 250);
+          final isNearEnd = dur > const Duration(seconds: 3) && remaining <= const Duration(milliseconds: 800);
           final isAtEnd = dur > Duration.zero && pos >= dur;
 
           if (!_isConfirmingExit && (isNearEnd || isAtEnd)) {
@@ -641,7 +643,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         _watchedIndices.add(i);
       }
       _showEpisodeDrawer = false;
-      _isLoading = true;
+      _isLoading = !_isAutoAdvancing;
       _hasError = false;
       _errorMessage = '';
       _activeSubtitleNotifier.value = '';
@@ -1502,6 +1504,39 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                       Text(
                         'Memuat Episode...',
                         style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Seamless transition pill indicator saat auto-advance
+            if (_isAutoAdvancing && !_isLoading)
+              Positioned(
+                top: 28,
+                right: 36,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFF2D55).withValues(alpha: 0.5), width: 1.2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFFF2D55),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Eps ${_currentIndex + 1}...',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
