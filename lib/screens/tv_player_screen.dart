@@ -103,6 +103,41 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   bool _onHardwareKey(KeyEvent event) {
     if (!mounted) return false;
+
+    // While exit dialog is active, only intercept Back key to cancel dialog cleanly.
+    // Let all other keys (arrows, enter) pass directly to the dialog buttons!
+    if (_isConfirmingExit) {
+      final key = event.logicalKey;
+      final isBack = key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.backspace ||
+          key == LogicalKeyboardKey.browserBack ||
+          key == LogicalKeyboardKey.gameButtonB;
+      if (isBack) {
+        if (event is KeyDownEvent) {
+          if (Navigator.of(context, rootNavigator: true).canPop()) {
+            Navigator.of(context, rootNavigator: true).pop(false);
+          }
+        }
+        return true;
+      }
+      return false;
+    }
+
+    final key = event.logicalKey;
+    final isBackKey = key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB;
+
+    if (isBackKey) {
+      if (event is KeyDownEvent) {
+        _onBackKeyDown();
+      }
+      return true;
+    }
+
     final res = _handleTvKeyEvent(_rootFocusNode, event);
     return res == KeyEventResult.handled;
   }
@@ -305,7 +340,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           }
 
           // Auto next episode
-          if (pos >= controller.value.duration && controller.value.duration > Duration.zero) {
+          if (!_isConfirmingExit && pos >= controller.value.duration && controller.value.duration > Duration.zero) {
             if (!_isAutoAdvancing && _currentIndex < widget.drama.episodes.length - 1) {
               _isAutoAdvancing = true;
               _playNextEpisode();
@@ -529,15 +564,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   }
 
   KeyEventResult _handleTvKeyEvent(FocusNode node, KeyEvent event) {
-    // If exit dialog is active, let dialog buttons handle all remote keys
+    // If exit dialog is active, prevent all player actions (no seek, no control toggle)
     if (_isConfirmingExit) {
-      return KeyEventResult.ignored;
+      return KeyEventResult.handled;
     }
 
     final key = event.logicalKey;
 
     final isBackKey = key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.gameButtonB;
 
     if (isBackKey) {
@@ -721,7 +758,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _hideControlsTimer?.cancel();
     final wasPlaying = _controller?.value.isPlaying ?? false;
     if (wasPlaying) {
-      await _controller?.pause();
+      try {
+        _controller?.pause();
+      } catch (_) {}
     }
 
     if (!mounted) {
@@ -761,11 +800,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           actions: [
             TvFocusable(
               focusNode: stayBtnFocus,
+              autofocus: true,
               onPressed: () => Navigator.of(ctx).pop(false),
               onKeyEvent: (node, event) {
-                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                  exitBtnFocus.requestFocus();
-                  return KeyEventResult.handled;
+                if (event is KeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                    exitBtnFocus.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.escape ||
+                      event.logicalKey == LogicalKeyboardKey.goBack ||
+                      event.logicalKey == LogicalKeyboardKey.backspace) {
+                    Navigator.of(ctx).pop(false);
+                    return KeyEventResult.handled;
+                  }
                 }
                 return KeyEventResult.ignored;
               },
@@ -780,9 +828,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
               focusNode: exitBtnFocus,
               onPressed: () => Navigator.of(ctx).pop(true),
               onKeyEvent: (node, event) {
-                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  stayBtnFocus.requestFocus();
-                  return KeyEventResult.handled;
+                if (event is KeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                    stayBtnFocus.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.escape ||
+                      event.logicalKey == LogicalKeyboardKey.goBack ||
+                      event.logicalKey == LogicalKeyboardKey.backspace) {
+                    Navigator.of(ctx).pop(false);
+                    return KeyEventResult.handled;
+                  }
                 }
                 return KeyEventResult.ignored;
               },
