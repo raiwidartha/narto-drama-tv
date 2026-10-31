@@ -45,15 +45,15 @@ Didesain dari awal untuk pengalaman 10-foot widescreen TV, navigasi penuh remote
 
 ---
 
-## Unduh Biner Rilis (v1.0.0)
+## Unduh Biner Rilis (v1.0.23)
 
-Unduh paket rilis resmi dari tab [Releases v1.0.0](https://github.com/raiwidartha/narto-drama-tv/releases/tag/v1.0.0):
+Unduh paket rilis resmi dari tab [Releases v1.0.23](https://github.com/raiwidartha/narto-drama-tv/releases/tag/v1.0.23):
 
-- **[narto-drama-tv-v1.0.0-armv7.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.0/narto-drama-tv-v1.0.0-armv7.zip)** (Rekomendasi Xiaomi Mi TV A2 55" / MiTV-MOOQ1 / Android TV 32-bit)
-- **[narto-drama-tv-v1.0.0-arm64.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.0/narto-drama-tv-v1.0.0-arm64.zip)** (Android TV / Google TV 64-bit)
-- **[narto-drama-tv-v1.0.0-apks.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.0/narto-drama-tv-v1.0.0-apks.zip)** (Paket lengkap seluruh ABI)
-- **[Direct APK armeabi-v7a](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.0/narto-drama-tv-v1.0.0-armeabi-v7a.apk)**
-- **[Direct APK arm64-v8a](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.0/narto-drama-tv-v1.0.0-arm64-v8a.apk)**
+- **[narto-drama-tv-v1.0.23-armv7.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.23/narto-drama-tv-v1.0.23-armv7.zip)** (Rekomendasi Xiaomi Mi TV A2 55" / MiTV-MOOQ1 / Android TV 32-bit)
+- **[narto-drama-tv-v1.0.23-arm64.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.23/narto-drama-tv-v1.0.23-arm64.zip)** (Android TV / Google TV 64-bit)
+- **[narto-drama-tv-v1.0.23-all-apks.zip](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.23/narto-drama-tv-v1.0.23-all-apks.zip)** (Paket lengkap seluruh ABI)
+- **[Direct APK armeabi-v7a](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.23/narto-drama-tv-v1.0.23-armeabi-v7a.apk)**
+- **[Direct APK arm64-v8a](https://github.com/raiwidartha/narto-drama-tv/releases/download/v1.0.23/narto-drama-tv-v1.0.23-arm64-v8a.apk)**
 
 ---
 
