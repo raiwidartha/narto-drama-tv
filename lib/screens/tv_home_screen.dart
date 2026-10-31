@@ -75,13 +75,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   String _searchError = '';
   final List<FocusNode> _tabFocusNodes = List.generate(6, (_) => FocusNode());
 
-  // Dedicated remote entry focus nodes
+  // Dedicated remote entry focus nodes and controllers
   final FocusNode _firstHomeFocusNode = FocusNode();
   final FocusNode _firstHomeDramaFocusNode = FocusNode();
+  final FocusNode _lastHomeDramaFocusNode = FocusNode();
+  final ScrollController _homeGridScrollController = ScrollController();
   final FocusNode _homeRefreshFocusNode = FocusNode();
   final FocusNode _homeFilterFocusNode = FocusNode();
   final FocusNode _firstProviderFocusNode = FocusNode();
   final FocusNode _firstProviderDramaFocusNode = FocusNode();
+  final FocusNode _lastProviderDramaFocusNode = FocusNode();
+  final ScrollController _providerGridScrollController = ScrollController();
   final FocusNode _providerSyncFocusNode = FocusNode();
   final Map<String, FocusNode> _providerChipFocusNodes = {};
   final FocusNode _firstHistoryFocusNode = FocusNode();
@@ -429,13 +433,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (targetPage < 1 || targetPage > _homeTotalPages) return;
     if (targetPage == _homeCurrentPage) return;
 
+    if (_homeGridScrollController.hasClients) {
+      _homeGridScrollController.jumpTo(0.0);
+    }
+
     if (_allHomeDramas.isNotEmpty) {
       setState(() {
         _homeCurrentPage = targetPage;
         _updateDisplayedHomeDramas();
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_firstHomeDramaFocusNode.canRequestFocus) {
+        if (_homeGridScrollController.hasClients) {
+          _homeGridScrollController.jumpTo(0.0);
+        }
+        if (mounted && _firstHomeDramaFocusNode.canRequestFocus) {
           _firstHomeDramaFocusNode.requestFocus();
         }
       });
@@ -454,6 +465,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             _isLoadingHome = false;
           });
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_homeGridScrollController.hasClients) {
+              _homeGridScrollController.jumpTo(0.0);
+            }
             if (_firstHomeDramaFocusNode.canRequestFocus) {
               _firstHomeDramaFocusNode.requestFocus();
             }
@@ -473,6 +487,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Future<void> _loadHomeCatalog({bool reset = false}) async {
     if (_isLoadingHome) return;
     if (reset) {
+      if (_homeGridScrollController.hasClients) {
+        _homeGridScrollController.jumpTo(0.0);
+      }
       setState(() {
         _homePage = 1;
         _homeCurrentPage = 1;
@@ -596,11 +613,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   Future<void> _changeProviderPage(int targetPage) async {
     if (targetPage < 1 || targetPage > _providerTotalPages) return;
+    if (targetPage == _providerCurrentPage) return;
+
+    if (_providerGridScrollController.hasClients) {
+      _providerGridScrollController.jumpTo(0.0);
+    }
     setState(() {
       _providerCurrentPage = targetPage;
       _updateDisplayedProviderDramas();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_providerGridScrollController.hasClients) {
+        _providerGridScrollController.jumpTo(0.0);
+      }
       if (mounted && _firstProviderDramaFocusNode.canRequestFocus) {
         _firstProviderDramaFocusNode.requestFocus();
       }
@@ -610,6 +635,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Future<void> _loadProviderCatalog({bool reset = false}) async {
     if (_isLoadingProviderDramas) return;
     if (reset) {
+      if (_providerGridScrollController.hasClients) {
+        _providerGridScrollController.jumpTo(0.0);
+      }
       setState(() {
         _providerCurrentPage = 1;
         _allProviderDramas = [];
@@ -695,6 +723,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   void _selectProviderInProviderTab(String providerKey) {
+    if (_providerGridScrollController.hasClients) {
+      _providerGridScrollController.jumpTo(0.0);
+    }
     if (_selectedProviderKey == providerKey && _providerDramas.isNotEmpty) {
       if (_firstProviderDramaFocusNode.canRequestFocus) {
         _firstProviderDramaFocusNode.requestFocus();
@@ -1056,10 +1087,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _providerBottomNextFocusNode.dispose();
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
+    _lastHomeDramaFocusNode.dispose();
+    _homeGridScrollController.dispose();
     _homeRefreshFocusNode.dispose();
     _homeFilterFocusNode.dispose();
     _firstProviderFocusNode.dispose();
     _firstProviderDramaFocusNode.dispose();
+    _lastProviderDramaFocusNode.dispose();
+    _providerGridScrollController.dispose();
     _providerSyncFocusNode.dispose();
     _firstHistoryFocusNode.dispose();
     _firstBookmarkFocusNode.dispose();
@@ -1648,6 +1683,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         children: [
                           Expanded(
                             child: GridView.builder(
+                              key: ValueKey('home_grid_page_$_homeCurrentPage'),
+                              controller: _homeGridScrollController,
                               physics: const BouncingScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 6,
@@ -1661,9 +1698,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                 final isTopRow = index < 6;
                                 final isBottomRow = index >= (_homeDramas.length - 6);
 
+                                FocusNode? dramaNode;
+                                if (index == 0) {
+                                  dramaNode = _firstHomeDramaFocusNode;
+                                } else if (index == _homeDramas.length - 1) {
+                                  dramaNode = _lastHomeDramaFocusNode;
+                                }
+
                                 return TvDramaCard(
                                   drama: drama,
-                                  focusNode: index == 0 ? _firstHomeDramaFocusNode : null,
+                                  focusNode: dramaNode,
                                   onKeyEvent: (node, event) {
                                     if (event is KeyDownEvent) {
                                       if (event.logicalKey == LogicalKeyboardKey.arrowUp && isTopRow) {
@@ -1825,7 +1869,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   return KeyEventResult.handled;
                 }
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                  if (_lastHomeDramaFocusNode.canRequestFocus) {
+                    _lastHomeDramaFocusNode.requestFocus();
+                  } else if (_firstHomeDramaFocusNode.canRequestFocus) {
                     _firstHomeDramaFocusNode.requestFocus();
                   }
                   return KeyEventResult.handled;
@@ -1881,7 +1927,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   return KeyEventResult.handled;
                 }
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  if (_firstHomeDramaFocusNode.canRequestFocus) {
+                  if (_lastHomeDramaFocusNode.canRequestFocus) {
+                    _lastHomeDramaFocusNode.requestFocus();
+                  } else if (_firstHomeDramaFocusNode.canRequestFocus) {
                     _firstHomeDramaFocusNode.requestFocus();
                   }
                   return KeyEventResult.handled;
@@ -2280,6 +2328,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         children: [
                           Expanded(
                             child: GridView.builder(
+                              key: ValueKey('provider_grid_${_selectedProviderKey}_$_providerCurrentPage'),
+                              controller: _providerGridScrollController,
                               physics: const BouncingScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 6,
@@ -2291,9 +2341,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               itemBuilder: (context, index) {
                                 final drama = _providerDramas[index];
                                 final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
+
+                                FocusNode? dramaNode;
+                                if (index == 0) {
+                                  dramaNode = _firstProviderDramaFocusNode;
+                                } else if (index == _providerDramas.length - 1) {
+                                  dramaNode = _lastProviderDramaFocusNode;
+                                }
+
                                 return TvDramaCard(
                                   drama: drama,
-                                  focusNode: index == 0 ? _firstProviderDramaFocusNode : null,
+                                  focusNode: dramaNode,
                                   onKeyEvent: (node, event) {
                                     if (event is KeyDownEvent) {
                                       if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -2351,7 +2409,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   return KeyEventResult.handled;
                 }
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  if (_firstProviderDramaFocusNode.canRequestFocus) {
+                  if (_lastProviderDramaFocusNode.canRequestFocus) {
+                    _lastProviderDramaFocusNode.requestFocus();
+                  } else if (_firstProviderDramaFocusNode.canRequestFocus) {
                     _firstProviderDramaFocusNode.requestFocus();
                   }
                   return KeyEventResult.handled;
@@ -2407,7 +2467,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   return KeyEventResult.handled;
                 }
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  if (_firstProviderDramaFocusNode.canRequestFocus) {
+                  if (_lastProviderDramaFocusNode.canRequestFocus) {
+                    _lastProviderDramaFocusNode.requestFocus();
+                  } else if (_firstProviderDramaFocusNode.canRequestFocus) {
                     _firstProviderDramaFocusNode.requestFocus();
                   }
                   return KeyEventResult.handled;
