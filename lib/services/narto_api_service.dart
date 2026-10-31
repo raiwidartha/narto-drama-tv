@@ -207,6 +207,7 @@ class NartoApiService {
     String? onlyTab,
     int page = 1,
   }) async {
+    final stopwatch = Stopwatch()..start();
     try {
       final endpoint = isProxyMode
           ? (onlyTab != null
@@ -220,7 +221,10 @@ class NartoApiService {
       headers['X-Requested-With'] = 'XMLHttpRequest';
 
       final response = await http.get(Uri.parse(endpoint), headers: headers).timeout(const Duration(seconds: 20));
+      stopwatch.stop();
+
       if (response.statusCode == 200) {
+        AppSettings.recordProviderLatency(provider, stopwatch.elapsedMilliseconds, true);
         final data = json.decode(response.body);
         if (data is Map && data['ok'] == true) {
           final rawProviders = data['providers'];
@@ -233,12 +237,16 @@ class NartoApiService {
                 final cachedCount = AppSettings.getDramaCount(key);
                 final dramaCount = p['drama_count'] is int ? p['drama_count'] as int : cachedCount;
                 final labelWithCount = dramaCount > 0 ? '$label ($dramaCount)' : label;
+                final cachedLatency = AppSettings.getProviderLatency(key);
+                final isOnline = AppSettings.isProviderOnline(key);
 
                 providersList.add(ProviderInfo(
                   key: key,
                   label: label,
                   dramaCount: dramaCount,
                   labelWithCount: labelWithCount,
+                  latencyMs: cachedLatency,
+                  isOnline: isOnline,
                 ));
               }
             }
@@ -264,32 +272,45 @@ class NartoApiService {
             'active_provider': data['active_provider']?.toString() ?? provider,
           };
         }
+      } else {
+        AppSettings.recordProviderLatency(provider, stopwatch.elapsedMilliseconds, false);
       }
-    } catch (_) {}
+    } catch (_) {
+      stopwatch.stop();
+      AppSettings.recordProviderLatency(provider, stopwatch.elapsedMilliseconds, false);
+    }
     return {'providers': <ProviderInfo>[], 'sections': <ProviderSection>[]};
   }
 
-  /// Audit all providers manually and update cached counts
+  /// Audit all providers manually and update cached counts and latencies
   static Future<Map<String, int>> auditAllProviders({
     required List<String> providerKeys,
-    Function(int current, int total, String name, int count)? onProgress,
+    Function(int current, int total, String name, int count, int latencyMs, bool isOnline)? onProgress,
   }) async {
     final Map<String, int> counts = {};
     for (int i = 0; i < providerKeys.length; i++) {
       final key = providerKeys[i];
+      final sw = Stopwatch()..start();
       try {
         final res = await fetchProviderSections(provider: key);
+        sw.stop();
         final sections = res['sections'] as List<ProviderSection>? ?? [];
         int total = 0;
         for (final sec in sections) {
           total += sec.items.length;
         }
         counts[key.toLowerCase()] = total;
+        AppSettings.recordProviderLatency(key, sw.elapsedMilliseconds, true);
         if (onProgress != null) {
-          onProgress(i + 1, providerKeys.length, key, total);
+          onProgress(i + 1, providerKeys.length, key, total, sw.elapsedMilliseconds, true);
         }
       } catch (_) {
+        sw.stop();
         counts[key.toLowerCase()] = 0;
+        AppSettings.recordProviderLatency(key, sw.elapsedMilliseconds, false);
+        if (onProgress != null) {
+          onProgress(i + 1, providerKeys.length, key, 0, sw.elapsedMilliseconds, false);
+        }
       }
     }
     await AppSettings.saveProviderCounts(counts);

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import '../services/app_settings.dart';
 
 class DramaItem {
@@ -350,13 +351,61 @@ class ProviderInfo {
   final String label;
   final int dramaCount;
   final String labelWithCount;
+  final int? latencyMs;
+  final bool isOnline;
 
   const ProviderInfo({
     required this.key,
     required this.label,
     this.dramaCount = 0,
     String? labelWithCount,
+    this.latencyMs,
+    this.isOnline = true,
   }) : labelWithCount = labelWithCount ?? (dramaCount > 0 ? '$label ($dramaCount)' : label);
+
+  ProviderInfo copyWith({
+    String? key,
+    String? label,
+    int? dramaCount,
+    String? labelWithCount,
+    int? latencyMs,
+    bool? isOnline,
+  }) {
+    return ProviderInfo(
+      key: key ?? this.key,
+      label: label ?? this.label,
+      dramaCount: dramaCount ?? this.dramaCount,
+      labelWithCount: labelWithCount ?? this.labelWithCount,
+      latencyMs: latencyMs ?? this.latencyMs,
+      isOnline: isOnline ?? this.isOnline,
+    );
+  }
+
+  Color get statusColor {
+    if (!isOnline && latencyMs != null) return const Color(0xFFEF4444);
+    if (latencyMs == null) return const Color(0xFF64748B);
+    if (latencyMs! < 600) return const Color(0xFF10B981);
+    if (latencyMs! < 1500) return const Color(0xFFF59E0B);
+    return const Color(0xFFF97316);
+  }
+
+  String get speedTag {
+    if (!isOnline && latencyMs != null) return 'Gangguan';
+    if (latencyMs == null) return 'Belum Diuji';
+    if (latencyMs! < 600) return 'Cepat';
+    if (latencyMs! < 1500) return 'Normal';
+    return 'Lelet';
+  }
+
+  String get statusLabel {
+    if (!isOnline && latencyMs != null) return 'Gangguan';
+    if (latencyMs == null) return 'Belum Diuji';
+    if (latencyMs! < 600) return '${latencyMs}ms Cepat';
+    if (latencyMs! < 1500) return '${latencyMs}ms Normal';
+    return '${latencyMs}ms Lelet';
+  }
+
+  bool get isFastOrNormal => isOnline && (latencyMs == null || latencyMs! < 1500);
 
   factory ProviderInfo.fromJson(Map<String, dynamic> json) {
     final keyVal = json['key']?.toString() ?? '';
@@ -365,12 +414,31 @@ class ProviderInfo {
         ? json['drama_count'] as int
         : (int.tryParse(json['drama_count']?.toString() ?? '0') ?? 0);
     final lwc = json['label_with_count']?.toString() ?? (count > 0 ? '$labelVal ($count)' : labelVal);
+    final latency = json['latency_ms'] is int
+        ? json['latency_ms'] as int
+        : int.tryParse(json['latency_ms']?.toString() ?? '');
+    final online = json['is_online'] is bool
+        ? json['is_online'] as bool
+        : (json['is_online']?.toString() != 'false');
     return ProviderInfo(
       key: keyVal,
       label: labelVal,
       dramaCount: count,
       labelWithCount: lwc,
+      latencyMs: latency,
+      isOnline: online,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'key': key,
+      'label': label,
+      'drama_count': dramaCount,
+      'label_with_count': labelWithCount,
+      'latency_ms': latencyMs,
+      'is_online': isOnline,
+    };
   }
 }
 

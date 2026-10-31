@@ -9,6 +9,7 @@ class AppSettings {
   static const String keyApiUrl = 'config_api_url';
   static const String keyCustomCookie = 'config_custom_cookie';
   static const String keyProviderStatsCache = 'config_provider_stats_cache';
+  static const String keyProviderLatencyCache = 'config_provider_latency_cache';
   static const String keySubtitlePosition = 'config_subtitle_position';
   static const String keySubtitleFontSize = 'config_subtitle_font_size';
   static const String keySubtitleFontColor = 'config_subtitle_font_color';
@@ -32,6 +33,8 @@ class AppSettings {
     'moboreels': 350,
     'shortmax': 1632,
   };
+  static final Map<String, int> _providerLatencyMap = {};
+  static final Map<String, bool> _providerOnlineMap = {};
 
   static final List<ProviderInfo> _allProviders = [
     ProviderInfo(key: 'anyreel', label: 'AnyReel', dramaCount: 1475, labelWithCount: 'AnyReel (1475)'),
@@ -71,7 +74,17 @@ class AppSettings {
   static bool get isCustomBaseUrl => isCustomHost;
   static bool get isProxyMode => !_currentBaseUrl.contains('narto-drama.com');
   static String? get customCookie => _customCookie;
-  static List<ProviderInfo> get allProviders => List.unmodifiable(_allProviders);
+  static List<ProviderInfo> get allProviders {
+    return List.unmodifiable(_allProviders.map((p) {
+      final k = p.key.toLowerCase();
+      final lat = _providerLatencyMap[k] ?? p.latencyMs;
+      final onl = _providerOnlineMap[k] ?? p.isOnline;
+      if (lat != p.latencyMs || onl != p.isOnline) {
+        return p.copyWith(latencyMs: lat, isOnline: onl);
+      }
+      return p;
+    }));
+  }
   static List<String> get homeMergedProviders => List.unmodifiable(_homeMergedProviders);
 
   static Future<void> setHomeMergedProviders(List<String> providers) async {
@@ -201,6 +214,28 @@ class AppSettings {
         final Map<String, dynamic> decoded = json.decode(cachedStr);
         for (final entry in decoded.entries) {
           _providerCountCache[entry.key.toLowerCase()] = (entry.value as num).toInt();
+        }
+      } catch (_) {}
+    }
+
+    // Load provider latency cache in SharedPreferences
+    final cachedLatencyStr = prefs.getString(keyProviderLatencyCache);
+    if (cachedLatencyStr != null && cachedLatencyStr.isNotEmpty) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(cachedLatencyStr);
+        for (final entry in decoded.entries) {
+          final val = entry.value;
+          if (val is Map) {
+            final lat = (val['latencyMs'] as num?)?.toInt();
+            final onl = val['isOnline'] == true;
+            if (lat != null) {
+              _providerLatencyMap[entry.key.toLowerCase()] = lat;
+            }
+            _providerOnlineMap[entry.key.toLowerCase()] = onl;
+          } else if (val is num) {
+            _providerLatencyMap[entry.key.toLowerCase()] = val.toInt();
+            _providerOnlineMap[entry.key.toLowerCase()] = true;
+          }
         }
       } catch (_) {}
     }
@@ -341,6 +376,44 @@ class AppSettings {
     return _providerCountCache[providerKey.toLowerCase()] ?? 0;
   }
 
+  /// Get cached latency in ms for a provider
+  static int? getProviderLatency(String providerKey) {
+    return _providerLatencyMap[providerKey.toLowerCase()];
+  }
+
+  /// Check if provider is currently online
+  static bool isProviderOnline(String providerKey) {
+    return _providerOnlineMap[providerKey.toLowerCase()] ?? true;
+  }
+
+  /// Record measured latency and health status for a provider
+  static Future<void> recordProviderLatency(String providerKey, int latencyMs, bool isOnline) async {
+    final keyLower = providerKey.toLowerCase();
+    _providerLatencyMap[keyLower] = latencyMs;
+    _providerOnlineMap[keyLower] = isOnline;
+
+    for (int i = 0; i < _allProviders.length; i++) {
+      if (_allProviders[i].key.toLowerCase() == keyLower) {
+        _allProviders[i] = _allProviders[i].copyWith(
+          latencyMs: latencyMs,
+          isOnline: isOnline,
+        );
+      }
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final Map<String, dynamic> exportMap = {};
+      for (final k in _providerLatencyMap.keys) {
+        exportMap[k] = {
+          'latencyMs': _providerLatencyMap[k],
+          'isOnline': _providerOnlineMap[k] ?? true,
+        };
+      }
+      await prefs.setString(keyProviderLatencyCache, json.encode(exportMap));
+    } catch (_) {}
+  }
+
   /// Save updated provider counts
   static Future<void> saveProviderCounts(Map<String, int> counts) async {
     _providerCountCache.addAll(counts);
@@ -349,11 +422,11 @@ class AppSettings {
       final keyLower = p.key.toLowerCase();
       if (counts.containsKey(keyLower)) {
         final newCount = counts[keyLower]!;
-        _allProviders[i] = ProviderInfo(
-          key: p.key,
-          label: p.label,
+        _allProviders[i] = p.copyWith(
           dramaCount: newCount,
           labelWithCount: newCount > 0 ? '${p.label} ($newCount)' : p.label,
+          latencyMs: _providerLatencyMap[keyLower] ?? p.latencyMs,
+          isOnline: _providerOnlineMap[keyLower] ?? p.isOnline,
         );
       }
     }

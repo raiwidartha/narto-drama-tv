@@ -260,6 +260,34 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                           onPressed: () {
                             setDialogState(() {
                               selectedKeys.clear();
+                              final fastKeys = availableProviders
+                                  .where((p) => p.isFastOrNormal)
+                                  .map((p) => p.key);
+                              if (fastKeys.isNotEmpty) {
+                                selectedKeys.addAll(fastKeys);
+                              } else {
+                                selectedKeys.addAll(AppSettings.defaultMergedProviders);
+                              }
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          backgroundColor: const Color(0xFF1E293B),
+                          focusedBackgroundColor: const Color(0xFF059669),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.bolt_rounded, color: Color(0xFF34D399), size: 15),
+                              SizedBox(width: 6),
+                              Text('Pilih Cepat Saja', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TvFocusable(
+                          onPressed: () {
+                            setDialogState(() {
+                              selectedKeys.clear();
                               selectedKeys.addAll(AppSettings.defaultMergedProviders);
                             });
                           },
@@ -339,7 +367,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                                   color: isChecked ? const Color(0xFF00E5FF) : Colors.white38,
                                   size: 20,
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: p.statusColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     p.label,
@@ -352,6 +389,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                                     ),
                                   ),
                                 ),
+                                if (p.latencyMs != null) ...[
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: p.statusColor.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: p.statusColor.withValues(alpha: 0.4), width: 0.8),
+                                    ),
+                                    child: Text(
+                                      '${p.latencyMs}ms',
+                                      style: TextStyle(
+                                        color: p.statusColor,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
@@ -902,11 +958,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
 
       await NartoApiService.auditAllProviders(
         providerKeys: keys,
-        onProgress: (current, total, name, count) {
+        onProgress: (current, total, name, count, latencyMs, isOnline) {
           currentStep = current;
           totalSteps = total;
           progress = current / total;
-          statusText = '[$current/$total] ${name.toUpperCase()}: $count drama';
+          final speedTag = isOnline
+              ? (latencyMs < 600 ? '⚡ $latencyMs ms (Cepat)' : (latencyMs < 1500 ? '✓ $latencyMs ms (Normal)' : '🐢 $latencyMs ms (Lelet)'))
+              : '❌ Gangguan';
+          statusText = '[$current/$total] ${name.toUpperCase()}: $count drama • $speedTag';
           lastFoundCount = count;
           if (dialogSetState != null) {
             dialogSetState!(() {});
@@ -2013,6 +2072,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: p.statusColor,
+                          ),
+                        ),
                         Icon(
                           Icons.movie_filter_outlined,
                           size: 16,
@@ -2027,6 +2095,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                           ),
                         ),
+                        if (p.latencyMs != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: p.statusColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: p.statusColor.withValues(alpha: 0.5), width: 0.8),
+                            ),
+                            child: Text(
+                              '${p.latencyMs}ms',
+                              style: TextStyle(
+                                color: p.statusColor,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                         if (p.dramaCount > 0) ...[
                           const SizedBox(width: 6),
                           Container(
@@ -2059,6 +2146,42 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
                   Text(
                     'Koleksi Drama: ${_getProviderLabel(_selectedProviderKey)}',
                     style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Builder(
+                    builder: (context) {
+                      final currProvider = _providers.firstWhere(
+                        (p) => p.key.toLowerCase() == _selectedProviderKey.toLowerCase(),
+                        orElse: () => ProviderInfo(key: _selectedProviderKey, label: _selectedProviderKey),
+                      );
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: currProvider.statusColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: currProvider.statusColor.withValues(alpha: 0.4), width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(shape: BoxShape.circle, color: currProvider.statusColor),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              currProvider.statusLabel,
+                              style: TextStyle(
+                                color: currProvider.statusColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   if (_allProviderDramas.isNotEmpty) ...[
                     const SizedBox(width: 8),

@@ -204,6 +204,32 @@ void main() {
     expect(result['latencyMs'], isNonNegative);
   });
 
+  test('ProviderInfo status and latency classification test', () {
+    const pFast = ProviderInfo(key: 'melolo', label: 'Melolo', latencyMs: 250);
+    expect(pFast.speedTag, equals('Cepat'));
+    expect(pFast.statusLabel, equals('250ms Cepat'));
+    expect(pFast.isFastOrNormal, isTrue);
+    expect(pFast.statusColor, equals(const Color(0xFF10B981))); // Green
+
+    const pNormal = ProviderInfo(key: 'dramabox', label: 'DramaBox', latencyMs: 950);
+    expect(pNormal.speedTag, equals('Normal'));
+    expect(pNormal.statusLabel, equals('950ms Normal'));
+    expect(pNormal.isFastOrNormal, isTrue);
+    expect(pNormal.statusColor, equals(const Color(0xFFF59E0B))); // Yellow
+
+    const pSlow = ProviderInfo(key: 'shortmax', label: 'ShortMax', latencyMs: 2100);
+    expect(pSlow.speedTag, equals('Lelet'));
+    expect(pSlow.statusLabel, equals('2100ms Lelet'));
+    expect(pSlow.isFastOrNormal, isFalse);
+    expect(pSlow.statusColor, equals(const Color(0xFFF97316))); // Orange
+
+    const pOffline = ProviderInfo(key: 'bad', label: 'Bad', latencyMs: 5000, isOnline: false);
+    expect(pOffline.speedTag, equals('Gangguan'));
+    expect(pOffline.statusLabel, equals('Gangguan'));
+    expect(pOffline.isFastOrNormal, isFalse);
+    expect(pOffline.statusColor, equals(const Color(0xFFEF4444))); // Red
+  });
+
   testWidgets('Narto Drama TV smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const NartoDramaTvApp());
     expect(find.byType(NartoDramaTvApp), findsOneWidget);
