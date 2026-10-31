@@ -1115,29 +1115,58 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
 
   bool _isHandlingBack = false;
   bool _isShowingExitDialog = false;
+  DateTime? _lastHomeBackTime;
+  DateTime? _dialogOpenedAt;
 
   bool _onHardwareKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
+    if (!mounted) return false;
+
     final key = event.logicalKey;
     final isBackKey = key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.gameButtonB;
 
     if (!isBackKey) return false;
 
-    // Check if this screen is active and not covered by another route
-    if (!mounted) return false;
+    // While exit confirmation dialog is active:
+    // Intercept Back key to cancel dialog cleanly and prevent auto-close on KeyUp.
+    // Let all other keys (arrows, enter) pass directly to dialog buttons!
+    if (_isShowingExitDialog) {
+      if (isBackKey) {
+        if (event is KeyDownEvent) {
+          final now = DateTime.now();
+          if (_dialogOpenedAt != null && now.difference(_dialogOpenedAt!) < const Duration(milliseconds: 350)) {
+            return true;
+          }
+          final nav = Navigator.of(context, rootNavigator: true);
+          if (nav.canPop()) {
+            nav.pop(false);
+          }
+        }
+        return true; // Consume BOTH KeyDownEvent AND KeyUpEvent so dialog never auto-dismisses!
+      }
+      return false;
+    }
+
+    // Check if this screen is active and not covered by another route (e.g. detail screen)
     final modalRoute = ModalRoute.of(context);
     if (modalRoute != null && !modalRoute.isCurrent) {
       return false;
     }
 
-    if (_isHandlingBack || _isShowingExitDialog) return false;
+    if (_isHandlingBack) return true;
 
-    // Trigger back press immediately on single press KeyDown
-    _handleBackPress();
-    return true;
+    if (event is KeyDownEvent) {
+      final now = DateTime.now();
+      if (_lastHomeBackTime != null && now.difference(_lastHomeBackTime!) < const Duration(milliseconds: 350)) {
+        return true;
+      }
+      _lastHomeBackTime = now;
+      _handleBackPress();
+    }
+    return true; // Consume BOTH KeyDownEvent AND KeyUpEvent so Android onKeyUp NEVER triggers auto-close!
   }
 
   Future<bool> _showExitConfirmationDialog() async {
@@ -1148,63 +1177,74 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.power_settings_new_rounded, color: Color(0xFFFF2D55), size: 28),
-              SizedBox(width: 12),
-              Text(
-                'Keluar dari Narto Drama TV?',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, popResult) {
+            if (didPop) return;
+            final now = DateTime.now();
+            if (_dialogOpenedAt != null && now.difference(_dialogOpenedAt!) < const Duration(milliseconds: 350)) {
+              return;
+            }
+            Navigator.of(ctx).pop(false);
+          },
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.power_settings_new_rounded, color: Color(0xFFFF2D55), size: 28),
+                SizedBox(width: 12),
+                Text(
+                  'Keluar dari Narto Drama TV?',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: const Text(
+              'Apakah Anda yakin ingin menutup aplikasi Narto Drama TV?',
+              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+            ),
+            actions: [
+              TvFocusable(
+                focusNode: cancelFocusNode,
+                autofocus: true,
+                onPressed: () => Navigator.of(ctx).pop(false),
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                    if (exitFocusNode.canRequestFocus) {
+                      exitFocusNode.requestFocus();
+                    }
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xFF334155),
+                focusedBackgroundColor: const Color(0xFF475569),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                child: const Text('Batal / Tetap di Aplikasi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 12),
+              TvFocusable(
+                focusNode: exitFocusNode,
+                onPressed: () => Navigator.of(ctx).pop(true),
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                    if (cancelFocusNode.canRequestFocus) {
+                      cancelFocusNode.requestFocus();
+                    }
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xFFFF2D55),
+                focusedBackgroundColor: const Color(0xFFFF5377),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
-          content: const Text(
-            'Apakah Anda yakin ingin menutup aplikasi Narto Drama TV?',
-            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-          ),
-          actions: [
-            TvFocusable(
-              focusNode: cancelFocusNode,
-              autofocus: true,
-              onPressed: () => Navigator.of(ctx).pop(false),
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                  if (exitFocusNode.canRequestFocus) {
-                    exitFocusNode.requestFocus();
-                  }
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFF334155),
-              focusedBackgroundColor: const Color(0xFF475569),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              child: const Text('Batal / Tetap di Aplikasi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 12),
-            TvFocusable(
-              focusNode: exitFocusNode,
-              onPressed: () => Navigator.of(ctx).pop(true),
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  if (cancelFocusNode.canRequestFocus) {
-                    cancelFocusNode.requestFocus();
-                  }
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFFFF2D55),
-              focusedBackgroundColor: const Color(0xFFFF5377),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-              child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
         );
       },
     );
@@ -1227,8 +1267,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> with WidgetsBindingObserver
 
       // Single press Back on Beranda immediately opens exit confirmation dialog!
       _isShowingExitDialog = true;
+      _dialogOpenedAt = DateTime.now();
       final shouldExit = await _showExitConfirmationDialog();
       _isShowingExitDialog = false;
+      _dialogOpenedAt = null;
+      _lastHomeBackTime = DateTime.now();
       if (shouldExit == true) {
         SystemNavigator.pop();
       }
