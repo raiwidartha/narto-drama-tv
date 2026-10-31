@@ -28,7 +28,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   int _homePage = 1;
   int _homeCurrentPage = 1;
   int _homeTotalPages = 1;
-  static const int _homePageSize = 18;
+  static const int _homePageSize = 60;
   bool _hasMoreHome = true;
 
   // Topbar ping indicator state
@@ -44,13 +44,21 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _homeBottomPrevFocusNode = FocusNode();
   final FocusNode _homeBottomNextFocusNode = FocusNode();
 
-  // Provider tab state (independent feed)
-  String _selectedProviderKey = 'melolo';
+  // Provider tab state (independent feed & standardized pagination)
+  String _selectedProviderKey = 'anyreel';
+  List<DramaItem> _allProviderDramas = [];
   List<DramaItem> _providerDramas = [];
   bool _isLoadingProviderDramas = false;
   String _providerError = '';
-  int _providerPage = 1;
-  bool _hasMoreProviderDramas = true;
+  int _providerCurrentPage = 1;
+  int _providerTotalPages = 1;
+  static const int _providerPageSize = 60;
+
+  // Provider pagination focus nodes
+  final FocusNode _providerPrevPageFocusNode = FocusNode();
+  final FocusNode _providerNextPageFocusNode = FocusNode();
+  final FocusNode _providerBottomPrevFocusNode = FocusNode();
+  final FocusNode _providerBottomNextFocusNode = FocusNode();
 
   // Providers list
   List<ProviderInfo> _providers = [];
@@ -572,18 +580,44 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
   }
 
+  void _updateDisplayedProviderDramas() {
+    if (_allProviderDramas.isEmpty) {
+      _providerDramas = [];
+      return;
+    }
+    final start = (_providerCurrentPage - 1) * _providerPageSize;
+    if (start >= _allProviderDramas.length) {
+      _providerDramas = [];
+      return;
+    }
+    final end = (start + _providerPageSize).clamp(0, _allProviderDramas.length);
+    _providerDramas = _allProviderDramas.sublist(start, end);
+  }
+
+  Future<void> _changeProviderPage(int targetPage) async {
+    if (targetPage < 1 || targetPage > _providerTotalPages) return;
+    setState(() {
+      _providerCurrentPage = targetPage;
+      _updateDisplayedProviderDramas();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _firstProviderDramaFocusNode.canRequestFocus) {
+        _firstProviderDramaFocusNode.requestFocus();
+      }
+    });
+  }
+
   Future<void> _loadProviderCatalog({bool reset = false}) async {
     if (_isLoadingProviderDramas) return;
     if (reset) {
       setState(() {
-        _providerPage = 1;
+        _providerCurrentPage = 1;
+        _allProviderDramas = [];
         _providerDramas = [];
-        _hasMoreProviderDramas = true;
         _providerError = '';
         _isLoadingProviderDramas = true;
       });
     } else {
-      if (!_hasMoreProviderDramas) return;
       setState(() {
         _isLoadingProviderDramas = true;
       });
@@ -592,7 +626,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     try {
       final res = await NartoApiService.fetchProviderSections(
         provider: _selectedProviderKey,
-        page: _providerPage,
+        page: 1,
       );
       final sections = res['sections'] as List<ProviderSection>? ?? [];
       final apiProviders = res['providers'] as List<ProviderInfo>?;
@@ -609,22 +643,52 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         }
       }
 
+      // Safe fallback if upstream provider sections returned 0 items
+      if (uniqueItems.isEmpty && _allHomeDramas.isNotEmpty) {
+        final k = _selectedProviderKey.toLowerCase();
+        final fallbackItems = _allHomeDramas.where((d) {
+          final pKey = d.providerKey?.toLowerCase() ?? '';
+          return pKey == k || d.watchUrl.toLowerCase().contains(k);
+        }).toList();
+        if (fallbackItems.isNotEmpty) {
+          uniqueItems.addAll(fallbackItems);
+        }
+      }
+
       if (mounted) {
         setState(() {
           if (apiProviders != null && apiProviders.isNotEmpty) {
             _providers = apiProviders;
           }
-          _providerDramas = reset ? uniqueItems : [..._providerDramas, ...uniqueItems];
-          _hasMoreProviderDramas = uniqueItems.length >= 10;
-          _providerPage++;
+          _allProviderDramas = uniqueItems;
+          _providerTotalPages = (_allProviderDramas.length / _providerPageSize).ceil();
+          if (_providerTotalPages < 1) _providerTotalPages = 1;
+          if (_providerCurrentPage > _providerTotalPages) _providerCurrentPage = _providerTotalPages;
+          _updateDisplayedProviderDramas();
           _isLoadingProviderDramas = false;
         });
       }
     } catch (e) {
       if (mounted) {
+        // Fallback on exception: search available catalog
+        final k = _selectedProviderKey.toLowerCase();
+        final fallbackItems = _allHomeDramas.where((d) {
+          final pKey = d.providerKey?.toLowerCase() ?? '';
+          return pKey == k || d.watchUrl.toLowerCase().contains(k);
+        }).toList();
+
         setState(() {
           _isLoadingProviderDramas = false;
-          _providerError = 'Gagal memuat drama provider ($e)';
+          if (fallbackItems.isNotEmpty) {
+            _allProviderDramas = fallbackItems;
+            _providerTotalPages = (_allProviderDramas.length / _providerPageSize).ceil();
+            if (_providerTotalPages < 1) _providerTotalPages = 1;
+            _providerCurrentPage = 1;
+            _updateDisplayedProviderDramas();
+            _providerError = '';
+          } else {
+            _providerError = 'Provider ${_getProviderLabel(_selectedProviderKey)} sedang tidak merespons ($e)';
+          }
         });
       }
     }
@@ -986,6 +1050,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _homeNextPageFocusNode.dispose();
     _homeBottomPrevFocusNode.dispose();
     _homeBottomNextFocusNode.dispose();
+    _providerPrevPageFocusNode.dispose();
+    _providerNextPageFocusNode.dispose();
+    _providerBottomPrevFocusNode.dispose();
+    _providerBottomNextFocusNode.dispose();
     _firstHomeFocusNode.dispose();
     _firstHomeDramaFocusNode.dispose();
     _homeRefreshFocusNode.dispose();
@@ -1986,18 +2054,117 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Provider Drama Grid Title
+          // Provider Drama Grid Title & Top Pagination Bar
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Koleksi Drama: ${_getProviderLabel(_selectedProviderKey)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Text(
+                    'Koleksi Drama: ${_getProviderLabel(_selectedProviderKey)}',
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                  if (_allProviderDramas.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        'Hal $_providerCurrentPage / $_providerTotalPages (${_allProviderDramas.length} drama)',
+                        style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(width: 8),
-              if (_providerDramas.isNotEmpty)
-                Text(
-                  '(${_providerDramas.length} drama)',
-                  style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+              if (_providerTotalPages > 1)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TvFocusable(
+                      focusNode: _providerPrevPageFocusNode,
+                      onPressed: _providerCurrentPage > 1 ? () => _changeProviderPage(_providerCurrentPage - 1) : null,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent) {
+                          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                            if (_providerNextPageFocusNode.canRequestFocus) {
+                              _providerNextPageFocusNode.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                            if (_firstProviderDramaFocusNode.canRequestFocus) {
+                              _firstProviderDramaFocusNode.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
+                            if (activeChip.canRequestFocus) {
+                              activeChip.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          }
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      backgroundColor: _providerCurrentPage > 1 ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+                      focusedBackgroundColor: const Color(0xFFFF2D55),
+                      focusBorderColor: const Color(0xFF00E5FF),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back_ios_new_rounded, size: 12, color: _providerCurrentPage > 1 ? Colors.white : Colors.white30),
+                          const SizedBox(width: 4),
+                          Text('Prev', style: TextStyle(color: _providerCurrentPage > 1 ? Colors.white : Colors.white30, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TvFocusable(
+                      focusNode: _providerNextPageFocusNode,
+                      onPressed: _providerCurrentPage < _providerTotalPages ? () => _changeProviderPage(_providerCurrentPage + 1) : null,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent) {
+                          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                            if (_providerPrevPageFocusNode.canRequestFocus) {
+                              _providerPrevPageFocusNode.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                            if (_firstProviderDramaFocusNode.canRequestFocus) {
+                              _firstProviderDramaFocusNode.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
+                            if (activeChip.canRequestFocus) {
+                              activeChip.requestFocus();
+                            }
+                            return KeyEventResult.handled;
+                          }
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      backgroundColor: _providerCurrentPage < _providerTotalPages ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+                      focusedBackgroundColor: const Color(0xFFFF2D55),
+                      focusBorderColor: const Color(0xFF00E5FF),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Next', style: TextStyle(color: _providerCurrentPage < _providerTotalPages ? Colors.white : Colors.white30, fontSize: 11, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: _providerCurrentPage < _providerTotalPages ? Colors.white : Colors.white30),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -2011,7 +2178,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       focusNode: _firstProviderDramaFocusNode,
                       onKeyEvent: (node, event) {
                         if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                          _firstProviderFocusNode.requestFocus();
+                          final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
+                          if (activeChip.canRequestFocus) {
+                            activeChip.requestFocus();
+                          } else {
+                            _firstProviderFocusNode.requestFocus();
+                          }
                           return KeyEventResult.handled;
                         }
                         return KeyEventResult.ignored;
@@ -2041,94 +2213,227 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   ? _providerError
                                   : 'Belum ada drama ditemukan untuk provider ${_getProviderLabel(_selectedProviderKey)}',
                               style: const TextStyle(color: Colors.white54, fontSize: 14),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
-                            TvFocusable(
-                              focusNode: _firstProviderDramaFocusNode,
-                              onPressed: () => _loadProviderCatalog(reset: true),
-                              onKeyEvent: (node, event) {
-                                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                  _firstProviderFocusNode.requestFocus();
-                                  return KeyEventResult.handled;
-                                }
-                                return KeyEventResult.ignored;
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              backgroundColor: const Color(0xFF1E293B),
-                              focusedBackgroundColor: const Color(0xFFFF2D55),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.refresh, color: Colors.white, size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Muat Ulang Provider',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TvFocusable(
+                                  focusNode: _firstProviderDramaFocusNode,
+                                  onPressed: () => _loadProviderCatalog(reset: true),
+                                  onKeyEvent: (node, event) {
+                                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                      final activeChip = _getProviderChipFocusNode(_selectedProviderKey);
+                                      if (activeChip.canRequestFocus) {
+                                        activeChip.requestFocus();
+                                      } else {
+                                        _firstProviderFocusNode.requestFocus();
+                                      }
+                                      return KeyEventResult.handled;
+                                    }
+                                    return KeyEventResult.ignored;
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  focusedBackgroundColor: const Color(0xFFFF2D55),
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.refresh, color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Muat Ulang Provider',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_selectedProviderKey.toLowerCase() != 'anyreel') ...[
+                                  const SizedBox(width: 12),
+                                  TvFocusable(
+                                    onPressed: () => _selectProviderInProviderTab('anyreel'),
+                                    borderRadius: BorderRadius.circular(8),
+                                    backgroundColor: const Color(0xFF0284C7),
+                                    focusedBackgroundColor: const Color(0xFF0369A1),
+                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.stars_rounded, color: Colors.white, size: 18),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Beralih ke AnyReel (Aktif)',
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
-                              ),
+                              ],
                             ),
                           ],
                         ),
                       )
-                    : GridView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6,
-                          childAspectRatio: 0.68,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                        ),
-                        itemCount: _providerDramas.length + (_hasMoreProviderDramas ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index == _providerDramas.length) {
-                            return Center(
-                              child: TvFocusable(
-                                onPressed: () => _loadProviderCatalog(reset: false),
-                                borderRadius: BorderRadius.circular(10),
-                                backgroundColor: const Color(0xFF1E293B),
-                                focusedBackgroundColor: const Color(0xFFFF2D55),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                                child: _isLoadingProviderDramas
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.expand_more_rounded, color: Colors.white, size: 28),
-                                          SizedBox(height: 4),
-                                          Text('Muat Lagi', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: GridView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 6,
+                                childAspectRatio: 0.68,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
                               ),
-                            );
-                          }
-                          final drama = _providerDramas[index];
-                          final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
-                          return TvDramaCard(
-                            drama: drama,
-                            focusNode: index == 0 ? _firstProviderDramaFocusNode : null,
-                            onKeyEvent: (node, event) {
-                              if (event is KeyDownEvent) {
-                                if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                                  if (activeChipNode.canRequestFocus) {
-                                    activeChipNode.requestFocus();
-                                  } else {
-                                    _firstProviderFocusNode.requestFocus();
-                                  }
-                                  return KeyEventResult.handled;
-                                }
-                              }
-                              return KeyEventResult.ignored;
-                            },
-                            onTap: () => _openDetail(drama),
-                          );
-                        },
+                              itemCount: _providerDramas.length,
+                              itemBuilder: (context, index) {
+                                final drama = _providerDramas[index];
+                                final activeChipNode = _getProviderChipFocusNode(_selectedProviderKey);
+                                return TvDramaCard(
+                                  drama: drama,
+                                  focusNode: index == 0 ? _firstProviderDramaFocusNode : null,
+                                  onKeyEvent: (node, event) {
+                                    if (event is KeyDownEvent) {
+                                      if (index < 6 && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                        if (_providerPrevPageFocusNode.canRequestFocus && _providerTotalPages > 1) {
+                                          _providerPrevPageFocusNode.requestFocus();
+                                        } else if (activeChipNode.canRequestFocus) {
+                                          activeChipNode.requestFocus();
+                                        } else {
+                                          _firstProviderFocusNode.requestFocus();
+                                        }
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (index >= _providerDramas.length - 6 && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                                        if (_providerTotalPages > 1 && _providerBottomNextFocusNode.canRequestFocus) {
+                                          _providerBottomNextFocusNode.requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                      }
+                                    }
+                                    return KeyEventResult.ignored;
+                                  },
+                                  onTap: () => _openDetail(drama),
+                                );
+                              },
+                            ),
+                          ),
+                          _buildProviderBottomPagination(),
+                        ],
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProviderBottomPagination() {
+    if (_providerTotalPages <= 1 && _allProviderDramas.length <= _providerPageSize) {
+      return const SizedBox.shrink();
+    }
+    final canPrev = _providerCurrentPage > 1;
+    final canNext = _providerCurrentPage < _providerTotalPages;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TvFocusable(
+            focusNode: _providerBottomPrevFocusNode,
+            onPressed: canPrev ? () => _changeProviderPage(_providerCurrentPage - 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight && canNext) {
+                  _providerBottomNextFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  if (_firstProviderDramaFocusNode.canRequestFocus) {
+                    _firstProviderDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: canPrev ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.arrow_back_rounded, size: 16, color: canPrev ? Colors.white : Colors.white24),
+                const SizedBox(width: 8),
+                Text(
+                  'Halaman Sebelumnya',
+                  style: TextStyle(
+                    color: canPrev ? Colors.white : Colors.white24,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Text(
+              'Halaman $_providerCurrentPage dari $_providerTotalPages (${_allProviderDramas.isNotEmpty ? _allProviderDramas.length : _providerDramas.length} Drama)',
+              style: const TextStyle(
+                color: Color(0xFF38BDF8),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          TvFocusable(
+            focusNode: _providerBottomNextFocusNode,
+            onPressed: canNext ? () => _changeProviderPage(_providerCurrentPage + 1) : null,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft && canPrev) {
+                  _providerBottomPrevFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  if (_firstProviderDramaFocusNode.canRequestFocus) {
+                    _firstProviderDramaFocusNode.requestFocus();
+                  }
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: canNext ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+            focusedBackgroundColor: const Color(0xFFFF2D55),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Halaman Berikutnya',
+                  style: TextStyle(
+                    color: canNext ? Colors.white : Colors.white24,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.arrow_forward_rounded, size: 16, color: canNext ? Colors.white : Colors.white24),
+              ],
+            ),
           ),
         ],
       ),
@@ -2906,7 +3211,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Ketik URL endpoint server (contoh: https://narto-drama.vercel.app):',
+                'Ketik URL endpoint server (contoh: https://narto-drama.com):',
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -2990,7 +3295,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     bool? testSuccess;
 
     final preset1Focus = FocusNode();
-    final preset2Focus = FocusNode();
     final editUrlBtnFocus = FocusNode();
     final testBtnFocus = FocusNode();
     final cancelBtnFocus = FocusNode();
@@ -3006,7 +3310,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
             final isResmi = currentTargetUrl == 'https://narto-drama.com';
-            final isVercel = currentTargetUrl == 'https://narto-drama.vercel.app';
 
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
@@ -3035,9 +3338,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                                 editUrlBtnFocus.requestFocus();
                                 return KeyEventResult.handled;
-                              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                                preset2Focus.requestFocus();
-                                return KeyEventResult.handled;
                               }
                             }
                             return KeyEventResult.ignored;
@@ -3059,41 +3359,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               if (isResmi) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
                               if (isResmi) const SizedBox(width: 6),
                               const Text('Resmi (narto-drama.com)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        TvFocusable(
-                          focusNode: preset2Focus,
-                          onKeyEvent: (node, event) {
-                            if (event is KeyDownEvent) {
-                              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                                editUrlBtnFocus.requestFocus();
-                                return KeyEventResult.handled;
-                              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                                preset1Focus.requestFocus();
-                                return KeyEventResult.handled;
-                              }
-                            }
-                            return KeyEventResult.ignored;
-                          },
-                          onPressed: () {
-                            setDialogState(() {
-                              currentTargetUrl = 'https://narto-drama.vercel.app';
-                              testResult = '';
-                              testSuccess = null;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          backgroundColor: isVercel ? const Color(0xFF0284C7) : const Color(0xFF334155),
-                          focusedBackgroundColor: const Color(0xFF0369A1),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isVercel) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
-                              if (isVercel) const SizedBox(width: 6),
-                              const Text('Mirror Edge Vercel', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),

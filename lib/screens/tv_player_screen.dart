@@ -529,6 +529,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   }
 
   KeyEventResult _handleTvKeyEvent(FocusNode node, KeyEvent event) {
+    // If exit dialog is active, let dialog buttons handle all remote keys
+    if (_isConfirmingExit) {
+      return KeyEventResult.ignored;
+    }
+
     final key = event.logicalKey;
 
     final isBackKey = key == LogicalKeyboardKey.escape ||
@@ -548,6 +553,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       }
       _onBackKeyDown();
       return KeyEventResult.handled;
+    }
+
+    // If subtitle modal is open, let its focus tree handle arrow keys
+    if (_isSubtitleModalOpen) {
+      return KeyEventResult.ignored;
     }
 
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -720,10 +730,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return;
     }
 
+    final stayBtnFocus = FocusNode();
+    final exitBtnFocus = FocusNode();
+
     final shouldExit = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (stayBtnFocus.canRequestFocus) {
+            stayBtnFocus.requestFocus();
+          }
+        });
         return AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -743,8 +761,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           ),
           actions: [
             TvFocusable(
-              autofocus: true,
+              focusNode: stayBtnFocus,
               onPressed: () => Navigator.of(ctx).pop(false),
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  exitBtnFocus.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xFF334155),
               focusedBackgroundColor: const Color(0xFF475569),
@@ -753,7 +778,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             ),
             const SizedBox(width: 12),
             TvFocusable(
+              focusNode: exitBtnFocus,
               onPressed: () => Navigator.of(ctx).pop(true),
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  stayBtnFocus.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xFFFF2D55),
               focusedBackgroundColor: const Color(0xFFFF5377),
@@ -764,6 +797,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         );
       },
     );
+
+    stayBtnFocus.dispose();
+    exitBtnFocus.dispose();
 
     _isConfirmingExit = false;
 

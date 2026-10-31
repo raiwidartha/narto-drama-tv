@@ -219,7 +219,7 @@ class NartoApiService {
       final headers = Map<String, String>.from(_defaultHeaders);
       headers['X-Requested-With'] = 'XMLHttpRequest';
 
-      final response = await http.get(Uri.parse(endpoint), headers: headers).timeout(const Duration(seconds: 12));
+      final response = await http.get(Uri.parse(endpoint), headers: headers).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data is Map && data['ok'] == true) {
@@ -356,7 +356,7 @@ class NartoApiService {
         finalUrl = parsed.replace(path: p, queryParameters: {'lang': lang}).toString();
       }
 
-      var response = await client.get(Uri.parse(finalUrl), headers: _defaultHeaders);
+      var response = await client.get(Uri.parse(finalUrl), headers: _defaultHeaders).timeout(const Duration(seconds: 20));
 
       // In case of secondary redirect
       if (response.isRedirect || response.statusCode == 301 || response.statusCode == 302) {
@@ -369,9 +369,10 @@ class NartoApiService {
             redirPath = '$redirPath/1';
             finalUrl = redirParsed.replace(path: redirPath, queryParameters: {'lang': lang}).toString();
           }
-          response = await client.get(Uri.parse(finalUrl), headers: _defaultHeaders);
+          response = await client.get(Uri.parse(finalUrl), headers: _defaultHeaders).timeout(const Duration(seconds: 20));
         }
       }
+      client.close();
 
       final html = response.body;
 

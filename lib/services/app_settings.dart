@@ -25,20 +25,22 @@ class AppSettings {
   static String? _customCookie;
   static final Map<String, int> _providerCountCache = {
     'anyreel': 1475,
+    'melolo': 248,
+    'vigloo': 247,
     'dramabox': 1121,
     'reelshort': 890,
-    'shortmax': 1632,
-    'vigloo': 247,
     'moboreels': 350,
+    'shortmax': 1632,
   };
 
   static final List<ProviderInfo> _allProviders = [
-    ProviderInfo(key: 'shortmax', label: 'ShortMax', dramaCount: 1632, labelWithCount: 'ShortMax (1632)'),
     ProviderInfo(key: 'anyreel', label: 'AnyReel', dramaCount: 1475, labelWithCount: 'AnyReel (1475)'),
+    ProviderInfo(key: 'melolo', label: 'Melolo', dramaCount: 248, labelWithCount: 'Melolo (248)'),
+    ProviderInfo(key: 'vigloo', label: 'Vigloo', dramaCount: 247, labelWithCount: 'Vigloo (247)'),
     ProviderInfo(key: 'dramabox', label: 'DramaBox', dramaCount: 1121, labelWithCount: 'DramaBox (1121)'),
     ProviderInfo(key: 'reelshort', label: 'ReelShort', dramaCount: 890, labelWithCount: 'ReelShort (890)'),
     ProviderInfo(key: 'moboreels', label: 'MoboReels', dramaCount: 350, labelWithCount: 'MoboReels (350)'),
-    ProviderInfo(key: 'vigloo', label: 'Vigloo', dramaCount: 247, labelWithCount: 'Vigloo (247)'),
+    ProviderInfo(key: 'shortmax', label: 'ShortMax', dramaCount: 1632, labelWithCount: 'ShortMax (1632)'),
   ];
 
   // Merged Home Providers setting
