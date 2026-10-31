@@ -104,32 +104,28 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   bool _onHardwareKey(KeyEvent event) {
     if (!mounted) return false;
 
-    // While exit dialog is active, only intercept Back key to cancel dialog cleanly.
-    // Let all other keys (arrows, enter) pass directly to the dialog buttons!
-    if (_isConfirmingExit) {
-      final key = event.logicalKey;
-      final isBack = key == LogicalKeyboardKey.escape ||
-          key == LogicalKeyboardKey.goBack ||
-          key == LogicalKeyboardKey.backspace ||
-          key == LogicalKeyboardKey.browserBack ||
-          key == LogicalKeyboardKey.gameButtonB;
-      if (isBack) {
-        if (event is KeyDownEvent) {
-          if (Navigator.of(context, rootNavigator: true).canPop()) {
-            Navigator.of(context, rootNavigator: true).pop(false);
-          }
-        }
-        return true;
-      }
-      return false;
-    }
-
     final key = event.logicalKey;
     final isBackKey = key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.backspace ||
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.gameButtonB;
+
+    // While exit dialog is active:
+    // Only intercept Back key to cancel dialog cleanly and prevent double pop.
+    // Let all other keys (arrows, enter) pass directly to dialog buttons!
+    if (_isConfirmingExit) {
+      if (isBackKey) {
+        if (event is KeyDownEvent) {
+          final nav = Navigator.of(context, rootNavigator: true);
+          if (nav.canPop()) {
+            nav.pop(false);
+          }
+        }
+        return true;
+      }
+      return false;
+    }
 
     if (isBackKey) {
       if (event is KeyDownEvent) {
@@ -714,8 +710,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     return KeyEventResult.ignored;
   }
 
+  DateTime? _lastBackTime;
+
   void _onBackKeyDown() {
     if (_isConfirmingExit) return;
+
+    final now = DateTime.now();
+    if (_lastBackTime != null && now.difference(_lastBackTime!) < const Duration(milliseconds: 350)) {
+      return;
+    }
+    _lastBackTime = now;
 
     if (_isSubtitleModalOpen) {
       if (Navigator.of(context, rootNavigator: true).canPop()) {
@@ -780,7 +784,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             stayBtnFocus.requestFocus();
           }
         });
-        return AlertDialog(
+        return PopScope(
+          canPop: true,
+          child: AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
@@ -808,12 +814,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                     exitBtnFocus.requestFocus();
                     return KeyEventResult.handled;
                   }
-                  if (event.logicalKey == LogicalKeyboardKey.escape ||
-                      event.logicalKey == LogicalKeyboardKey.goBack ||
-                      event.logicalKey == LogicalKeyboardKey.backspace) {
-                    Navigator.of(ctx).pop(false);
-                    return KeyEventResult.handled;
-                  }
                 }
                 return KeyEventResult.ignored;
               },
@@ -833,12 +833,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                     stayBtnFocus.requestFocus();
                     return KeyEventResult.handled;
                   }
-                  if (event.logicalKey == LogicalKeyboardKey.escape ||
-                      event.logicalKey == LogicalKeyboardKey.goBack ||
-                      event.logicalKey == LogicalKeyboardKey.backspace) {
-                    Navigator.of(ctx).pop(false);
-                    return KeyEventResult.handled;
-                  }
                 }
                 return KeyEventResult.ignored;
               },
@@ -849,6 +843,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
               child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
+        ),
         );
       },
     );
@@ -856,6 +851,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     stayBtnFocus.dispose();
     exitBtnFocus.dispose();
 
+    _lastBackTime = DateTime.now();
     _isConfirmingExit = false;
 
     if (!mounted) return;
