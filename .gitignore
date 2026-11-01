@@ -46,3 +46,5 @@ app.*.map.json
 *.zip
 *.apk
 release_output/
+test_screenshots/
+
