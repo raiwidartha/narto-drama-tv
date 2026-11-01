@@ -125,9 +125,6 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
       setState(() {
         _lastWatchedEpIndex = result;
         _watchedEpisodeIndices.add(result);
-        for (int i = 0; i <= result; i++) {
-          _watchedEpisodeIndices.add(i);
-        }
       });
     }
 
@@ -539,8 +536,7 @@ class _TvDetailScreenState extends State<TvDetailScreen> {
                           ),
                           itemCount: episodes.length,
                           itemBuilder: (context, index) {
-                            final isWatched = _watchedEpisodeIndices.contains(index) ||
-                                (_lastWatchedEpIndex != null && index < _lastWatchedEpIndex!);
+                            final isWatched = _watchedEpisodeIndices.contains(index);
                             final isCurrent = index == _lastWatchedEpIndex;
 
                             return TvFocusable(

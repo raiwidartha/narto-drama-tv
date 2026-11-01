@@ -188,9 +188,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     super.initState();
     _currentIndex = widget.initialEpisodeIndex;
     _watchedIndices.add(_currentIndex);
-    for (int i = 0; i <= _currentIndex; i++) {
-      _watchedIndices.add(i);
-    }
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     _initController();
     _savePlaybackHistory();
@@ -218,9 +215,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         setState(() {
           _watchedIndices.addAll(eps);
           _watchedIndices.add(_currentIndex);
-          for (int i = 0; i <= _currentIndex; i++) {
-            _watchedIndices.add(i);
-          }
         });
       }
     } catch (_) {}
@@ -334,6 +328,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     await oldController?.dispose();
 
     // Fast path: Apply prefetched subtitles immediately if ready in RAM
+    Future<void>? subFuture;
     if (_prefetchedSubtitles.containsKey(_currentIndex)) {
       _availableSubtitleTracks = _prefetchedTracks[_currentIndex] ?? [];
       _selectedTrack = _prefetchedSelectedTrack[_currentIndex];
@@ -341,8 +336,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _activeSubtitleNotifier.value = '';
       _activeCueIndex = -1;
     } else {
-      // Run subtitle fetch concurrently with video init without blocking video start
-      _loadSubtitlesForCurrentEpisode();
+      subFuture = _loadSubtitlesForCurrentEpisode();
     }
 
     final currentEp = widget.drama.episodes[_currentIndex];
@@ -450,7 +444,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         throw Exception('Semua sumber video tidak dapat diputar');
       }
 
+      // Ensure subtitle loading is awaited before starting playback
+      if (subFuture != null) {
+        try {
+          await subFuture.timeout(const Duration(milliseconds: 3500));
+        } catch (_) {}
+      }
+
       final controller = activeController;
+
+      // Pre-evaluate initial subtitle cue before playback starts
+      if (_subtitlesEnabled && _subtitles.isNotEmpty) {
+        final idx = _findCueIndex(Duration.zero);
+        if (idx >= 0) {
+          _activeCueIndex = idx;
+          _activeSubtitleNotifier.value = _subtitles[idx].text;
+        } else {
+          _activeSubtitleNotifier.value = '';
+          _activeCueIndex = -1;
+        }
+      } else {
+        _activeSubtitleNotifier.value = '';
+        _activeCueIndex = -1;
+      }
+
       controller.play();
       WakelockPlus.enable();
 
@@ -610,6 +627,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             _subtitles = cues;
             _activeCueIndex = -1;
           });
+          if (_controller != null && _controller!.value.isInitialized) {
+            final pos = _controller!.value.position;
+            final idx = _findCueIndex(pos);
+            if (idx >= 0) {
+              _activeCueIndex = idx;
+              _activeSubtitleNotifier.value = _subtitles[idx].text;
+            }
+          }
         }
       } catch (_) {}
     }
@@ -639,9 +664,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     setState(() {
       _currentIndex = newIndex;
       _watchedIndices.add(newIndex);
-      for (int i = 0; i <= newIndex; i++) {
-        _watchedIndices.add(i);
-      }
       _showEpisodeDrawer = false;
       _isLoading = !_isAutoAdvancing;
       _hasError = false;
@@ -2109,7 +2131,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                           itemCount: widget.drama.episodes.length,
                           itemBuilder: (context, index) {
                             final isCur = index == _currentIndex;
-                            final isWatched = _watchedIndices.contains(index) || index < _currentIndex;
+                            final isWatched = _watchedIndices.contains(index);
                             final fNode = _episodeFocusNodes.putIfAbsent(index, () => FocusNode());
                             return Padding(
                               padding: const EdgeInsets.only(right: 12),

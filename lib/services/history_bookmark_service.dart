@@ -273,9 +273,7 @@ class HistoryBookmarkService {
             watchedSet.addAll(decoded.map((e) => int.tryParse(e.toString()) ?? 0));
           } catch (_) {}
         }
-        for (int i = 0; i <= episodeIndex; i++) {
-          watchedSet.add(i);
-        }
+        watchedSet.add(episodeIndex);
         await prefs.setString('watched_eps_$k', jsonEncode(watchedSet.toList()..sort()));
       }
 
